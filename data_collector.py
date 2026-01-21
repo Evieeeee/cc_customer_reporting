@@ -2,7 +2,7 @@
 Data Collector for ContentClicks Dashboard
 Integrates Social Media, Email, and GA4 Analytics with TRUE 12-month historical tracking
 
-VERSION 4.1 - NATIVE API OPTIMIZATION - BUILD 20260121
+VERSION 4.3 - INSTAGRAM 12-MONTH HISTORICAL - BUILD 20260121
 NATIVE API FUNCTIONALITY FOR EACH SYSTEM:
 
 1. GA4 (Google Analytics 4):
@@ -12,19 +12,21 @@ NATIVE API FUNCTIONALITY FOR EACH SYSTEM:
    - 1 API call for all 12 months
 
 2. Social Media (Facebook/Instagram):
-   - Uses period='day' parameter for native daily granularity
-   - Returns daily data points which are then aggregated into months
-   - Single API call retrieves all daily data for entire date range
-   - 1 API call per platform for all 12 months
+   - Facebook: Uses period='day' with since/until for full date range (1 API call)
+   - Instagram: Makes 12 API calls (30-day chunks) to build 12-month history
+     * Each call: period='day' with since/until for 30-day window
+     * Metrics: reach, impressions (profile_views/website_clicks deprecated Jan 2025)
+     * Daily data aggregated into monthly buckets
+   - Returns daily data points which are aggregated into months
 
 3. Email (Instantly):
-   - Gets all campaigns in ONE API call
-   - Each campaign has a "start_date" field used for monthly segmentation
-   - Data is grouped by parsing the start_date field (YYYY-MM-DD)
-   - 1 API call for all campaigns across 12 months
+   - Gets all campaigns in ONE API call, grouped by start_date field
+   - Uses bulk analytics API to fetch multiple campaigns efficiently
+   - Passes proper date ranges (start_date/end_date) for accurate metrics
+   - Reduces API calls significantly vs individual campaign fetches
 
-Total API calls: 3 (GA4, Email, Social) instead of 36 (12 months × 3 sources)
-Efficiency gain: ~92% reduction in API calls
+Total API calls: ~15 (1 GA4, 12 Instagram chunks, 1-2 Email/Social)
+Improvement: Was 36+ calls (12 months × 3 sources), now ~15 calls with full historical data
 """
 
 import sys
@@ -527,7 +529,7 @@ class DataCollector:
             # Now get analytics for each campaign and aggregate by month
             for (year, month), month_campaigns in campaigns_by_month.items():
                 print(f"  Processing {year}-{month:02d}: {len(month_campaigns)} campaigns...")
-                
+
                 # Aggregate metrics for this month
                 total_sent = 0
                 total_delivered = 0
@@ -536,17 +538,50 @@ class DataCollector:
                 total_replied = 0
                 total_bounced = 0
                 total_unsubscribed = 0
-                
-                # Get analytics for each campaign
-                for campaign in month_campaigns:
-                    campaign_id = campaign.get('id')
-                    
-                    if not campaign_id:
-                        continue
-                    
-                    # Get campaign analytics
-                    analytics = fetcher.get_campaign_analytics(campaign_id, debug=False)
-                    
+
+                # Calculate date range for this month
+                month_start = datetime(year, month, 1)
+                if month == 12:
+                    month_end = datetime(year + 1, 1, 1) - timedelta(days=1)
+                else:
+                    month_end = datetime(year, month + 1, 1) - timedelta(days=1)
+
+                # Get campaign IDs for bulk fetch
+                campaign_ids = [c.get('id') for c in month_campaigns if c.get('id')]
+
+                if not campaign_ids:
+                    continue
+
+                # Fetch analytics for multiple campaigns at once (more efficient)
+                if len(campaign_ids) > 1:
+                    analytics_data = fetcher.get_multiple_campaigns_analytics(
+                        campaign_ids,
+                        start_date=month_start.strftime('%Y-%m-%d'),
+                        end_date=month_end.strftime('%Y-%m-%d'),
+                        debug=False
+                    )
+
+                    # Aggregate from bulk response
+                    if isinstance(analytics_data, dict):
+                        for campaign_id, analytics in analytics_data.items():
+                            if analytics:
+                                total_sent += analytics.get('emails_sent_count', 0)
+                                total_delivered += analytics.get('contacted_count', 0)
+                                total_opened += analytics.get('open_count_unique', 0)
+                                total_clicked += analytics.get('link_click_count_unique', 0)
+                                total_replied += analytics.get('reply_count_unique', 0)
+                                total_bounced += analytics.get('bounced_count', 0)
+                                total_unsubscribed += analytics.get('unsubscribed_count', 0)
+                else:
+                    # Single campaign - use individual fetch
+                    campaign_id = campaign_ids[0]
+                    analytics = fetcher.get_campaign_analytics(
+                        campaign_id,
+                        start_date=month_start.strftime('%Y-%m-%d'),
+                        end_date=month_end.strftime('%Y-%m-%d'),
+                        debug=False
+                    )
+
                     if analytics:
                         total_sent += analytics.get('emails_sent_count', 0)
                         total_delivered += analytics.get('contacted_count', 0)
@@ -706,12 +741,12 @@ class DataCollector:
                             for value_entry in ig_insights['reach']:
                                 date_str = value_entry.get('end_time', '')
                                 value = value_entry.get('value', 0)
-                                
+
                                 if date_str:
                                     try:
                                         date_obj = datetime.strptime(date_str[:10], '%Y-%m-%d')
                                         month_key = (date_obj.year, date_obj.month)
-                                        
+
                                         if month_key not in monthly_data:
                                             monthly_data[month_key] = {
                                                 'impressions': 0,
@@ -719,11 +754,34 @@ class DataCollector:
                                                 'reach': 0,
                                                 'followers': 0
                                             }
-                                        
+
                                         monthly_data[month_key]['reach'] += value
                                     except:
                                         pass
-                        
+
+                        # Parse impressions data
+                        if 'impressions' in ig_insights:
+                            for value_entry in ig_insights['impressions']:
+                                date_str = value_entry.get('end_time', '')
+                                value = value_entry.get('value', 0)
+
+                                if date_str:
+                                    try:
+                                        date_obj = datetime.strptime(date_str[:10], '%Y-%m-%d')
+                                        month_key = (date_obj.year, date_obj.month)
+
+                                        if month_key not in monthly_data:
+                                            monthly_data[month_key] = {
+                                                'impressions': 0,
+                                                'engagement': 0,
+                                                'reach': 0,
+                                                'followers': 0
+                                            }
+
+                                        monthly_data[month_key]['impressions'] += value
+                                    except:
+                                        pass
+
                         # Add follower count
                         for month_key in monthly_data:
                             monthly_data[month_key]['followers'] += account.get('followers_count', 0)
