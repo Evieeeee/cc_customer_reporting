@@ -2,12 +2,29 @@
 Data Collector for ContentClicks Dashboard
 Integrates Social Media, Email, and GA4 Analytics with TRUE 12-month historical tracking
 
-VERSION 4.0 - TRUE MONTHLY OPTIMIZATION - BUILD 20260119
-CHANGES:
-- GA4: Uses enhanced endpoint with by_month structure (1 API call for 12 months)
-- Email: Groups campaigns by start_date field (1 API call for all campaigns)
-- Social: Already optimized with daily period data (maintained)
-- Total API calls: 3 (GA4, Email, Social) instead of 36 (12 months × 3 sources)
+VERSION 4.1 - NATIVE API OPTIMIZATION - BUILD 20260121
+NATIVE API FUNCTIONALITY FOR EACH SYSTEM:
+
+1. GA4 (Google Analytics 4):
+   - Uses start_month and end_month parameters in ONE API call
+   - Example: GET /ga4?start_month=2025-10&end_month=2026-01
+   - Returns data pre-segmented by month in "by_month" structure
+   - 1 API call for all 12 months
+
+2. Social Media (Facebook/Instagram):
+   - Uses period='day' parameter for native daily granularity
+   - Returns daily data points which are then aggregated into months
+   - Single API call retrieves all daily data for entire date range
+   - 1 API call per platform for all 12 months
+
+3. Email (Instantly):
+   - Gets all campaigns in ONE API call
+   - Each campaign has a "start_date" field used for monthly segmentation
+   - Data is grouped by parsing the start_date field (YYYY-MM-DD)
+   - 1 API call for all campaigns across 12 months
+
+Total API calls: 3 (GA4, Email, Social) instead of 36 (12 months × 3 sources)
+Efficiency gain: ~92% reduction in API calls
 """
 
 import sys
