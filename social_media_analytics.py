@@ -15,7 +15,7 @@ import requests
 from datetime import datetime, timedelta
 import json
 
-API_VERSION = "v21.0"
+API_VERSION = "v24.0"
 
 # ============================================================================
 # FACEBOOK - POST-LEVEL INSIGHTS (THESE WORK!)
