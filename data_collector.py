@@ -493,41 +493,84 @@ class DataCollector:
             # Group campaigns by month based on start_date
             campaigns_by_month = {}
             
-            for campaign in campaigns:
-                # Get campaign start_date
-                start_date = campaign.get('start_date')
-                
+            for idx, campaign in enumerate(campaigns):
+                if idx == 0:
+                    print(f"  [DEBUG] First campaign keys: {list(campaign.keys())}")
+                    print(f"  [DEBUG] Checking date fields...")
+                    print(f"  [DEBUG]   start_date = {repr(campaign.get('start_date'))}")
+                    print(f"  [DEBUG]   timestamp_created = {repr(campaign.get('timestamp_created'))}")
+                    print(f"  [DEBUG]   created_at = {repr(campaign.get('created_at'))}")
+
+                # Get campaign start_date - try multiple fields
+                start_date = campaign.get('start_date') or campaign.get('timestamp_created') or campaign.get('created_at')
+
+                if idx == 0:
+                    print(f"  [DEBUG] Selected start_date: {repr(start_date)}")
+                    print(f"  [DEBUG] Type: {type(start_date)}")
+                    print(f"  [DEBUG] Bool value: {bool(start_date)}")
+
                 if not start_date:
+                    print(f"  [WARNING] Campaign {campaign.get('name', 'Unknown')} has no date field, skipping")
                     continue
-                
+
                 # Parse date (format may vary, handle multiple formats)
+                campaign_date = None
                 try:
-                    # Try ISO format first
-                    campaign_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-                except:
-                    try:
-                        # Try common format YYYY-MM-DD
-                        campaign_date = datetime.strptime(start_date[:10], '%Y-%m-%d')
-                    except:
-                        print(f"  [WARNING] Could not parse date: {start_date}")
-                        continue
-                
-                # Check if campaign is in our date range
-                if campaign_date < start_month or campaign_date > end_month:
+                    # Try Unix timestamp first (if it's a number)
+                    if isinstance(start_date, (int, float)):
+                        # Handle both seconds and milliseconds timestamps
+                        if start_date > 10000000000:  # Milliseconds (JavaScript style)
+                            campaign_date = datetime.fromtimestamp(start_date / 1000)
+                        else:  # Seconds (Unix timestamp)
+                            campaign_date = datetime.fromtimestamp(start_date)
+                    elif isinstance(start_date, str):
+                        # Try ISO format
+                        try:
+                            campaign_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                        except:
+                            # Try common format YYYY-MM-DD
+                            campaign_date = datetime.strptime(start_date[:10], '%Y-%m-%d')
+                except Exception as e:
+                    print(f"  [WARNING] Could not parse date '{start_date}': {e}")
                     continue
-                
-                # Get month key
+
+                if not campaign_date:
+                    print(f"  [WARNING] Failed to parse date: {start_date}")
+                    continue
+
+                if idx == 0:
+                    print(f"  [DEBUG] Parsed campaign_date: {campaign_date}")
+
+                # Don't filter by date range - include ALL campaigns and group by month
+                # The 12-month filtering will happen when we store metrics
                 month_key = (campaign_date.year, campaign_date.month)
-                
+
                 if month_key not in campaigns_by_month:
                     campaigns_by_month[month_key] = []
-                
+
                 campaigns_by_month[month_key].append(campaign)
+
+                if idx < 3:
+                    print(f"  [DEBUG] Added campaign '{campaign.get('name')}' to month {month_key}")
             
-            print(f"  Campaigns span {len(campaigns_by_month)} months")
-            
+            print(f"  Campaigns span {len(campaigns_by_month)} months: {sorted(campaigns_by_month.keys())}")
+
+            # Filter to only months within our 12-month window
+            filtered_campaigns = {}
+            for month_key, month_campaigns in campaigns_by_month.items():
+                year, month = month_key
+                month_date = datetime(year, month, 1)
+
+                # Check if this month is within our 12-month window
+                if start_month <= month_date <= end_month:
+                    filtered_campaigns[month_key] = month_campaigns
+                else:
+                    print(f"  [DEBUG] Skipping month {year}-{month:02d} (outside 12-month window)")
+
+            print(f"  Processing {len(filtered_campaigns)} months within date range")
+
             # Now get analytics for each campaign and aggregate by month
-            for (year, month), month_campaigns in campaigns_by_month.items():
+            for (year, month), month_campaigns in filtered_campaigns.items():
                 print(f"  Processing {year}-{month:02d}: {len(month_campaigns)} campaigns...")
 
                 # Aggregate metrics for this month
@@ -674,26 +717,27 @@ class DataCollector:
                     )
                     
                     # Parse daily values into monthly buckets
-                    if 'page_impressions_unique' in fb_insights:
-                        for value_entry in fb_insights['page_impressions_unique'].get('values', []):
+                    # Use page_media_view (replaces deprecated page_impressions_unique as of Nov 2025)
+                    if 'page_media_view' in fb_insights:
+                        for value_entry in fb_insights['page_media_view'].get('values', []):
                             date_str = value_entry.get('end_time', '')
                             value = value_entry.get('value', 0)
-                            
+
                             # Parse date and extract year-month
                             if date_str:
                                 try:
                                     date_obj = datetime.strptime(date_str[:10], '%Y-%m-%d')
                                     month_key = (date_obj.year, date_obj.month)
-                                    
+
                                     if month_key not in monthly_data:
                                         monthly_data[month_key] = {
-                                            'impressions': 0,
+                                            'views': 0,           # Changed from impressions to views
                                             'engagement': 0,
                                             'reach': 0,
                                             'followers': 0
                                         }
-                                    
-                                    monthly_data[month_key]['impressions'] += value
+
+                                    monthly_data[month_key]['views'] += value
                                 except:
                                     pass
                     
@@ -710,12 +754,12 @@ class DataCollector:
                                     
                                     if month_key not in monthly_data:
                                         monthly_data[month_key] = {
-                                            'impressions': 0,
+                                            'views': 0,
                                             'engagement': 0,
                                             'reach': 0,
                                             'followers': 0
                                         }
-                                    
+
                                     monthly_data[month_key]['engagement'] += value
                                 except:
                                     pass
@@ -749,7 +793,7 @@ class DataCollector:
 
                                         if month_key not in monthly_data:
                                             monthly_data[month_key] = {
-                                                'impressions': 0,
+                                                'views': 0,
                                                 'engagement': 0,
                                                 'reach': 0,
                                                 'followers': 0
@@ -772,13 +816,13 @@ class DataCollector:
 
                                         if month_key not in monthly_data:
                                             monthly_data[month_key] = {
-                                                'impressions': 0,
+                                                'views': 0,
                                                 'engagement': 0,
                                                 'reach': 0,
                                                 'followers': 0
                                             }
 
-                                        monthly_data[month_key]['impressions'] += value
+                                        monthly_data[month_key]['views'] += value  # Instagram impressions count as views
                                     except:
                                         pass
 
@@ -802,14 +846,14 @@ class DataCollector:
                 days = (next_month - month_start).days
                 
                 # Calculate engagement rate
-                total_reach = data['reach'] if data['reach'] > 0 else data['impressions']
+                total_reach = data['reach'] if data['reach'] > 0 else data['views']
                 engagement_rate = (data['engagement'] / total_reach * 100) if total_reach > 0 else 0
-                
+
                 # Store metrics
                 self._store_metric('social_media', 'awareness', 'Reach',
                                   data['reach'], 'reach', days, year, month)
-                self._store_metric('social_media', 'awareness', 'Impressions',
-                                  data['impressions'], 'impressions', days, year, month)
+                self._store_metric('social_media', 'awareness', 'Views',
+                                  data['views'], 'views', days, year, month)  # Changed from Impressions to Views
                 self._store_metric('social_media', 'engagement', 'Engagement Rate',
                                   engagement_rate, 'engagement_rate', days, year, month)
                 self._store_metric('social_media', 'engagement', 'Total Interactions',

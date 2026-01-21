@@ -503,6 +503,9 @@ def get_facebook_page_insights(page_id, page_token, days_back=7):
     Get Facebook page-level insights with daily period granularity
     Uses period='day' for native API monthly segmentation
 
+    UPDATED FOR 2026: Impressions metrics deprecated November 2025
+    Now using Views metrics (page_media_view, post_media_view)
+
     Args:
         page_id: Facebook page ID
         page_token: Page access token
@@ -510,14 +513,19 @@ def get_facebook_page_insights(page_id, page_token, days_back=7):
 
     Returns: Dictionary of insights by metric with daily values
     """
+    # Updated metrics for v24.0 (November 2025 deprecations applied)
+    # Replaced impressions with views metrics
     metrics = [
-        'page_post_engagements',
-        'page_impressions_unique',
-        'page_posts_impressions',
-        'page_posts_impressions_unique',
-        'page_actions_post_reactions_total',
-        'page_video_views',
-        'page_total_actions'
+        'page_post_engagements',      # Still works
+        'page_media_view',             # Replaces page_impressions_unique
+        'page_engaged_users',          # Still works
+        'page_post_reactions_like',    # Reactions still work
+        'page_post_reactions_love',
+        'page_post_reactions_wow',
+        'page_post_reactions_haha',
+        'page_post_reactions_sorry',
+        'page_post_reactions_anger',
+        'page_actions_post_reactions_total'  # Total reactions
     ]
 
     # Calculate date range
