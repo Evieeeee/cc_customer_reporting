@@ -500,6 +500,7 @@ class DataCollector:
                 if idx == 0:
                     print(f"  [DEBUG] First campaign keys: {list(campaign.keys())}")
                     print(f"  [DEBUG] First campaign start_date value: {start_date}")
+                    print(f"  [DEBUG] start_date type: {type(start_date)}")
 
                 if not start_date:
                     print(f"  [WARNING] Campaign {campaign.get('name', 'Unknown')} has no start_date/timestamp_created, skipping")
@@ -510,7 +511,11 @@ class DataCollector:
                 try:
                     # Try Unix timestamp first (if it's a number)
                     if isinstance(start_date, (int, float)):
-                        campaign_date = datetime.fromtimestamp(start_date)
+                        # Handle both seconds and milliseconds timestamps
+                        if start_date > 10000000000:  # Milliseconds (JavaScript style)
+                            campaign_date = datetime.fromtimestamp(start_date / 1000)
+                        else:  # Seconds (Unix timestamp)
+                            campaign_date = datetime.fromtimestamp(start_date)
                     elif isinstance(start_date, str):
                         # Try ISO format
                         try:
@@ -528,27 +533,37 @@ class DataCollector:
 
                 if idx == 0:
                     print(f"  [DEBUG] Parsed campaign_date: {campaign_date}")
-                    print(f"  [DEBUG] Date range: {start_month} to {end_month}")
-                    print(f"  [DEBUG] In range? {start_month <= campaign_date <= end_month}")
 
-                # Check if campaign is in our date range (use <= for inclusive)
-                if campaign_date < start_month or campaign_date > end_month:
-                    if idx < 3:
-                        print(f"  [DEBUG] Campaign {campaign.get('name')} date {campaign_date} outside range, skipping")
-                    continue
-
-                # Get month key
+                # Don't filter by date range - include ALL campaigns and group by month
+                # The 12-month filtering will happen when we store metrics
                 month_key = (campaign_date.year, campaign_date.month)
 
                 if month_key not in campaigns_by_month:
                     campaigns_by_month[month_key] = []
 
                 campaigns_by_month[month_key].append(campaign)
+
+                if idx < 3:
+                    print(f"  [DEBUG] Added campaign '{campaign.get('name')}' to month {month_key}")
             
-            print(f"  Campaigns span {len(campaigns_by_month)} months")
-            
+            print(f"  Campaigns span {len(campaigns_by_month)} months: {sorted(campaigns_by_month.keys())}")
+
+            # Filter to only months within our 12-month window
+            filtered_campaigns = {}
+            for month_key, month_campaigns in campaigns_by_month.items():
+                year, month = month_key
+                month_date = datetime(year, month, 1)
+
+                # Check if this month is within our 12-month window
+                if start_month <= month_date <= end_month:
+                    filtered_campaigns[month_key] = month_campaigns
+                else:
+                    print(f"  [DEBUG] Skipping month {year}-{month:02d} (outside 12-month window)")
+
+            print(f"  Processing {len(filtered_campaigns)} months within date range")
+
             # Now get analytics for each campaign and aggregate by month
-            for (year, month), month_campaigns in campaigns_by_month.items():
+            for (year, month), month_campaigns in filtered_campaigns.items():
                 print(f"  Processing {year}-{month:02d}: {len(month_campaigns)} campaigns...")
 
                 # Aggregate metrics for this month
