@@ -494,16 +494,23 @@ class DataCollector:
             campaigns_by_month = {}
             
             for idx, campaign in enumerate(campaigns):
+                if idx == 0:
+                    print(f"  [DEBUG] First campaign keys: {list(campaign.keys())}")
+                    print(f"  [DEBUG] Checking date fields...")
+                    print(f"  [DEBUG]   start_date = {repr(campaign.get('start_date'))}")
+                    print(f"  [DEBUG]   timestamp_created = {repr(campaign.get('timestamp_created'))}")
+                    print(f"  [DEBUG]   created_at = {repr(campaign.get('created_at'))}")
+
                 # Get campaign start_date - try multiple fields
                 start_date = campaign.get('start_date') or campaign.get('timestamp_created') or campaign.get('created_at')
 
                 if idx == 0:
-                    print(f"  [DEBUG] First campaign keys: {list(campaign.keys())}")
-                    print(f"  [DEBUG] First campaign start_date value: {start_date}")
-                    print(f"  [DEBUG] start_date type: {type(start_date)}")
+                    print(f"  [DEBUG] Selected start_date: {repr(start_date)}")
+                    print(f"  [DEBUG] Type: {type(start_date)}")
+                    print(f"  [DEBUG] Bool value: {bool(start_date)}")
 
                 if not start_date:
-                    print(f"  [WARNING] Campaign {campaign.get('name', 'Unknown')} has no start_date/timestamp_created, skipping")
+                    print(f"  [WARNING] Campaign {campaign.get('name', 'Unknown')} has no date field, skipping")
                     continue
 
                 # Parse date (format may vary, handle multiple formats)
