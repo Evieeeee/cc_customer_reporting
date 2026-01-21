@@ -493,35 +493,56 @@ class DataCollector:
             # Group campaigns by month based on start_date
             campaigns_by_month = {}
             
-            for campaign in campaigns:
-                # Get campaign start_date
-                start_date = campaign.get('start_date')
-                
+            for idx, campaign in enumerate(campaigns):
+                # Get campaign start_date - try multiple fields
+                start_date = campaign.get('start_date') or campaign.get('timestamp_created') or campaign.get('created_at')
+
+                if idx == 0:
+                    print(f"  [DEBUG] First campaign keys: {list(campaign.keys())}")
+                    print(f"  [DEBUG] First campaign start_date value: {start_date}")
+
                 if not start_date:
+                    print(f"  [WARNING] Campaign {campaign.get('name', 'Unknown')} has no start_date/timestamp_created, skipping")
                     continue
-                
+
                 # Parse date (format may vary, handle multiple formats)
+                campaign_date = None
                 try:
-                    # Try ISO format first
-                    campaign_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-                except:
-                    try:
-                        # Try common format YYYY-MM-DD
-                        campaign_date = datetime.strptime(start_date[:10], '%Y-%m-%d')
-                    except:
-                        print(f"  [WARNING] Could not parse date: {start_date}")
-                        continue
-                
-                # Check if campaign is in our date range
-                if campaign_date < start_month or campaign_date > end_month:
+                    # Try Unix timestamp first (if it's a number)
+                    if isinstance(start_date, (int, float)):
+                        campaign_date = datetime.fromtimestamp(start_date)
+                    elif isinstance(start_date, str):
+                        # Try ISO format
+                        try:
+                            campaign_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                        except:
+                            # Try common format YYYY-MM-DD
+                            campaign_date = datetime.strptime(start_date[:10], '%Y-%m-%d')
+                except Exception as e:
+                    print(f"  [WARNING] Could not parse date '{start_date}': {e}")
                     continue
-                
+
+                if not campaign_date:
+                    print(f"  [WARNING] Failed to parse date: {start_date}")
+                    continue
+
+                if idx == 0:
+                    print(f"  [DEBUG] Parsed campaign_date: {campaign_date}")
+                    print(f"  [DEBUG] Date range: {start_month} to {end_month}")
+                    print(f"  [DEBUG] In range? {start_month <= campaign_date <= end_month}")
+
+                # Check if campaign is in our date range (use <= for inclusive)
+                if campaign_date < start_month or campaign_date > end_month:
+                    if idx < 3:
+                        print(f"  [DEBUG] Campaign {campaign.get('name')} date {campaign_date} outside range, skipping")
+                    continue
+
                 # Get month key
                 month_key = (campaign_date.year, campaign_date.month)
-                
+
                 if month_key not in campaigns_by_month:
                     campaigns_by_month[month_key] = []
-                
+
                 campaigns_by_month[month_key].append(campaign)
             
             print(f"  Campaigns span {len(campaigns_by_month)} months")
