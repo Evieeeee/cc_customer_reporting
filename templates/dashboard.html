@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ContentClicks - Customer Journey Dashboard</title>
+    
+    <!-- Fonts -->
+    <style>
+        @import url('https://fonts.cdnfonts.com/css/avenir');
+    </style>
+    
+    <!-- Chart.js for graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="header-left">
+                <button id="addCustomerBtn" class="add-customer-btn" title="Add New Customer">
+                    <span class="plus-icon">+</span>
+                </button>
+            </div>
+            
+            <div class="header-center">
+                <h1 class="logo">ContentClicks</h1>
+            </div>
+            
+            <div class="header-right">
+                <select id="customerSelect" class="customer-select">
+                    <option value="">Select Customer...</option>
+                </select>
+                
+                <button id="refreshBtn" class="refresh-btn" title="Refresh Data">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M17.5 10C17.5 14.1421 14.1421 17.5 10 17.5C5.85786 17.5 2.5 14.1421 2.5 10C2.5 5.85786 5.85786 2.5 10 2.5C12.0711 2.5 13.9464 3.35714 15.3036 4.75" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M13 2.5H17.5V7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+                
+                <label class="history-checkbox" title="Collect 12 months of historical data">
+                    <input type="checkbox" id="collectHistoryCheckbox">
+                    <span>12-month history</span>
+                </label>
+                
+                <button id="exportPdfBtn" class="export-btn" title="Export to PDF">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M5 10L10 15M10 15L15 10M10 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M17 17H3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    PDF
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Content -->
+    <main class="dashboard" id="dashboard">
+        <div class="no-customer-selected" id="noCustomerMessage">
+            <div class="empty-state">
+                <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+                    <circle cx="60" cy="60" r="50" stroke="#006039" stroke-width="3" opacity="0.3"/>
+                    <path d="M40 60L55 75L80 45" stroke="#006039" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+                </svg>
+                <h2>Welcome to ContentClicks Dashboard</h2>
+                <p>Select a customer from the dropdown above or create a new customer profile to get started.</p>
+            </div>
+        </div>
+
+        <div class="dashboard-content" id="dashboardContent" style="display: none;">
+            <!-- Social Media Section -->
+            <section class="medium-section" id="socialMediaSection">
+                <div class="section-outer">
+                    <h2 class="section-title">SOCIAL MEDIA</h2>
+                    <div class="section-inner">
+                        <div class="kpi-cards-container">
+                            <!-- Social Media KPI Cards will be inserted here -->
+                        </div>
+                        
+                        <div class="charts-row">
+                            <div class="chart-container">
+                                <h3 class="chart-title">Performance vs Benchmark</h3>
+                                <canvas id="socialMediaChart"></canvas>
+                            </div>
+                            
+                            <div class="top-performers-container">
+                                <h3 class="chart-title">Top Performing Posts</h3>
+                                <div id="topSocialPosts" class="top-performers-list">
+                                    <!-- Top posts will be inserted here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Website Section -->
+            <section class="medium-section" id="websiteSection">
+                <div class="section-outer website-section">
+                    <h2 class="section-title">WEBSITE</h2>
+                    <div class="section-inner">
+                        <div class="kpi-cards-container">
+                            <!-- Website KPI Cards will be inserted here -->
+                        </div>
+                        
+                        <div class="charts-row">
+                            <div class="chart-container">
+                                <h3 class="chart-title">Performance vs Benchmark</h3>
+                                <canvas id="websiteChart"></canvas>
+                            </div>
+                            
+                            <div class="top-performers-container">
+                                <h3 class="chart-title">Top Performing Pages</h3>
+                                <div id="topPages" class="top-performers-list">
+                                    <!-- Top pages will be inserted here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Email Marketing Section -->
+            <section class="medium-section" id="emailSection">
+                <div class="section-outer email-section">
+                    <h2 class="section-title">EMAIL MARKETING</h2>
+                    <div class="section-inner">
+                        <div class="kpi-cards-container">
+                            <!-- Email KPI Cards will be inserted here -->
+                        </div>
+                        
+                        <div class="charts-row">
+                            <div class="chart-container full-width">
+                                <h3 class="chart-title">Performance vs Benchmark</h3>
+                                <canvas id="emailChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Add Customer Modal -->
+    <div id="addCustomerModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add New Customer</h2>
+                <button class="close-modal">&times;</button>
+            </div>
+            
+            <div class="modal-body">
+                <form id="addCustomerForm">
+                    <div class="form-section">
+                        <h3>Basic Information</h3>
+                        
+                        <div class="form-group">
+                            <label for="customerName">Customer Name *</label>
+                            <input type="text" id="customerName" name="name" required 
+                                   placeholder="e.g., Smile Dental Clinic">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="customerIndustry">Industry *</label>
+                            <select id="customerIndustry" name="industry" required>
+                                <option value="">Select industry...</option>
+                                <option value="dental">Dental</option>
+                                <option value="medical">Medical</option>
+                                <option value="healthcare">Healthcare</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-section">
+                        <h3>Social Media Credentials</h3>
+                        <p class="help-text">
+                            Get your System User Token from Meta Business Suite > Business Settings > System Users
+                        </p>
+                        
+                        <div class="form-group">
+                            <label for="systemUserToken">Meta System User Token</label>
+                            <input type="password" id="systemUserToken" 
+                                   placeholder="Enter your Meta System User access token"
+                                   autocomplete="new-password">
+                        </div>
+                        
+                        <button type="button" id="discoverPagesBtn" class="btn btn-secondary" style="margin-bottom: 1rem;">
+                            ðŸ” Discover Available Pages
+                        </button>
+                        
+                        <!-- Page selection area (hidden until discovered) -->
+                        <div id="pageSelectionArea" style="display: none;">
+                            <h4 style="margin-top: 1rem; margin-bottom: 0.5rem; color: #006039;">
+                                Select Pages to Track
+                            </h4>
+                            <p class="help-text">
+                                Choose which Facebook pages and Instagram accounts to include in reports
+                            </p>
+                            <div id="availablePages" class="page-list">
+                                <!-- Pages will be inserted here -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-section">
+                        <h3>Email Marketing Credentials</h3>
+                        
+                        <div class="form-group">
+                            <label for="instantlyApiKey">Instantly.ai API Key</label>
+                            <input type="password" id="instantlyApiKey" 
+                                   placeholder="Enter your Instantly API key">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="klaviyoApiKey">Klaviyo API Key</label>
+                            <input type="password" id="klaviyoApiKey" 
+                                   placeholder="Enter your Klaviyo API key">
+                        </div>
+                    </div>
+                    
+                    <div class="form-section">
+                        <h3>Website Analytics</h3>
+                        
+                        <div class="form-group">
+                            <label for="ga4PropertyId">Google Analytics 4 Property ID</label>
+                            <input type="text" id="ga4PropertyId" 
+                                   placeholder="e.g., 123456789">
+                        </div>
+                        
+                        <div class="info-box">
+                            <h4>How to add Service Account to GA4:</h4>
+                            <ol>
+                                <li>Go to your GA4 property in Google Analytics</li>
+                                <li>Click Admin (gear icon) in the bottom left</li>
+                                <li>Under Property, click "Property Access Management"</li>
+                                <li>Click the "+" button to add users</li>
+                                <li>Add this service account email with "Viewer" role</li>
+                                <li>Click "Add" to save</li>
+                            </ol>
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary cancel-modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create Customer</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <p>Loading data...</p>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Custom JavaScript -->
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>

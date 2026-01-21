@@ -1,0 +1,498 @@
+# FIRESTORE MIGRATION & 12-MONTH HISTORICAL DATA - DEPLOYMENT GUIDE
+
+## 🎯 What's New
+
+Your dashboard has been upgraded with two major improvements:
+
+### 1. **Firestore Database** (Cloud-Native Storage)
+- Migrated from SQLite to Google Cloud Firestore
+- Cloud-hosted, automatically scales
+- No more database file management
+- Automatic backups and replication
+
+### 2. **12-Month Historical Data Collection**
+- Collect and store data for the past 12 months
+- Monthly snapshots for trend analysis
+- Beautiful graphs showing year-over-year trends
+- See seasonal patterns in your metrics
+
+---
+
+## 📋 Prerequisites
+
+### Required Google Cloud Setup
+
+1. **Enable Firestore API**
+```bash
+gcloud services enable firestore.googleapis.com
+```
+
+2. **Create Firestore Database**
+```bash
+# Create in Native mode (NOT Datastore mode!)
+gcloud firestore databases create --location=us-central
+```
+
+3. **Service Account Permissions**
+Your Cloud Run service needs these roles:
+- `roles/datastore.user` (for Firestore read/write)
+- `roles/logging.logWriter` (for Cloud Logging)
+
+```bash
+# Get your project number
+PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format="value(projectNumber)")
+
+# Grant Firestore permissions to Cloud Run service account
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/datastore.user"
+```
+
+---
+
+## 🚀 Deployment Steps
+
+### Step 1: Update Files
+
+Replace these files in your project:
+
+1. **models.py** - New Firestore-based data models
+2. **data_collector.py** - Enhanced with 12-month collection
+3. **app.py** - Updated for Firestore (string IDs)
+4. **requirements.txt** - Added Firestore dependencies
+5. **dashboard.html** - Added historical collection checkbox
+6. **dashboard.js** - String ID support + 12-month graphs
+7. **dashboard.css** - Styling for new controls
+
+### Step 2: Install Dependencies Locally (for testing)
+
+```bash
+cd cc-dashboard-updated
+pip install -r requirements.txt
+```
+
+### Step 3: Test Locally
+
+```bash
+# Set up local Firestore emulator (optional)
+export FIRESTORE_EMULATOR_HOST=localhost:8080
+
+# Run the app
+python app.py
+```
+
+### Step 4: Deploy to Cloud Run
+
+```bash
+# Deploy with updated code
+gcloud run deploy contentclicks-dashboard \
+  --source . \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --memory 1Gi \
+  --timeout 600
+```
+
+**Note:** Increased memory and timeout for historical collection.
+
+---
+
+## 📊 How to Use Historical Collection
+
+### Option 1: From Dashboard UI
+
+1. Select a customer
+2. Check the "12-month history" checkbox in the header
+3. Click Refresh button
+4. Wait 5-10 minutes (collecting 12 months takes time!)
+5. Graphs will automatically show 12 months of data
+
+### Option 2: From Command Line
+
+```bash
+# SSH into your Cloud Run instance or run locally
+python data_collector.py --customer-id YOUR_CUSTOMER_ID --history
+
+# This will collect data for all 12 months
+```
+
+### Option 3: Automated Monthly Collection
+
+Set up a Cloud Scheduler job to collect data monthly:
+
+```bash
+# Create a scheduler job
+gcloud scheduler jobs create http monthly-data-collection \
+  --schedule="0 1 1 * *" \
+  --http-method=POST \
+  --uri="https://YOUR-DASHBOARD-URL/api/customers/CUSTOMER_ID/collect" \
+  --message-body='{"days":30,"collect_history":false}' \
+  --headers="Content-Type=application/json" \
+  --location=us-central1 \
+  --time-zone="America/New_York"
+```
+
+---
+
+## 🗂️ Firestore Data Structure
+
+### Collections
+
+```
+customers/
+  {customer_id}/           # Auto-generated ID
+    name: string
+    industry: string
+    created_at: timestamp
+    updated_at: timestamp
+
+credentials/
+  {customer_id}/
+    social_media/
+      system_user_token: string
+      selected_page_ids: string
+    email/
+      instantly_api_key: string
+      klaviyo_api_key: string
+    website/
+      ga4_property_id: string
+
+historical_metrics/
+  {customer_id}/
+    social_media/          # Medium
+      awareness/           # Journey stage
+        2024/              # Year
+          1/               # Month (January)
+            kpis/
+              Reach/       # KPI name
+                kpi_value: 5000
+                benchmark_value: 1000
+                time_period_days: 31
+                recorded_at: timestamp
+          2/               # February
+            kpis/
+              Reach/
+                ...
+        2025/
+          1/
+            kpis/
+              Reach/
+                ...
+
+top_performers/
+  {customer_id}/
+    social_media/
+      2025-01-14/         # Date
+        items/
+          {post_id}/
+            item_title: string
+            metric_name: string
+            metric_value: float
+            recorded_at: timestamp
+```
+
+---
+
+## 🔄 Data Migration (SQLite → Firestore)
+
+### If You Have Existing SQLite Data
+
+Run this migration script:
+
+```python
+# migration.py
+import sqlite3
+from models import Customer, CustomerCredential, HistoricalMetric
+
+# Open old SQLite database
+conn = sqlite3.connect('contentclicks.db')
+conn.row_factory = sqlite3.Row
+cursor = conn.cursor()
+
+# Migrate customers
+cursor.execute('SELECT * FROM customers')
+for row in cursor.fetchall():
+    customer_id = Customer.create(row['name'], row['industry'])
+    print(f"Migrated customer: {row['name']} -> {customer_id}")
+
+conn.close()
+```
+
+**Or start fresh** - Firestore database starts empty, just add customers again.
+
+---
+
+## 📈 Dashboard Features
+
+### New in Graphs
+
+- **12-month trend lines** - See performance over the year
+- **Monthly data points** - One point per month
+- **Benchmark comparison** - Track vs industry standards
+- **Date labels** - YYYY-MM format (e.g., "2024-01")
+
+### Interactive Features
+
+- **Click any KPI card** - Shows 12-month graph for that metric
+- **Hover over data points** - See exact values and dates
+- **Color-coded performance** - Above/below benchmark indicators
+
+---
+
+## ⚙️ Configuration Options
+
+### Historical Collection Settings
+
+In `data_collector.py`, you can customize:
+
+```python
+# Number of months to collect (default: 12)
+months = 12
+
+# Could extend to 24 months:
+months = 24
+```
+
+### Performance Tuning
+
+For faster historical collection:
+
+```python
+# Collect in parallel (risky with API rate limits)
+with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+    # Collect 2 months at a time across 3 mediums
+```
+
+For safer collection (slower but reliable):
+
+```python
+# Sequential month-by-month (current default)
+for month in months:
+    collect_month(month)
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### "Permission denied" errors
+
+**Fix:** Grant Firestore permissions to service account
+```bash
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/datastore.user"
+```
+
+### "Firestore not found" errors
+
+**Fix:** Create Firestore database
+```bash
+gcloud firestore databases create --location=us-central
+```
+
+### Historical collection times out
+
+**Fix:** Increase Cloud Run timeout
+```bash
+gcloud run services update contentclicks-dashboard \
+  --region us-central1 \
+  --timeout=900  # 15 minutes
+```
+
+### Graphs show no data
+
+**Check:**
+1. Did historical collection complete?
+2. Are there errors in Cloud Logging?
+3. Try clicking a KPI card to refresh the graph
+
+```bash
+# Check logs
+gcloud run logs read contentclicks-dashboard --region us-central1 --limit 100
+```
+
+### API rate limits exceeded
+
+**Solution:** Add delays between API calls
+
+In `data_collector.py`:
+```python
+import time
+
+# After each month
+time.sleep(2)  # Wait 2 seconds
+```
+
+---
+
+## 💰 Cost Implications
+
+### Firestore Costs
+
+**Storage:** ~$0.18/GB/month
+- Typical customer: ~1MB/month
+- 100 customers: 100MB = $0.02/month
+- Very affordable! 
+
+**Operations:**
+- Reads: $0.06 per 100,000
+- Writes: $0.18 per 100,000
+- ~1000 writes per month per customer = $0.002/month
+
+**Total estimated cost: $1-5/month** for 100 customers
+
+### Cloud Run Costs
+
+**Compute:**
+- Free tier: 180,000 vCPU-seconds/month
+- Your usage: ~10-20 minutes/month = ~600 seconds
+- Still within free tier!
+
+**Memory:**
+- Free tier: 360,000 GiB-seconds/month
+- Your usage: Minimal
+- Still within free tier!
+
+**Estimated total: $0-2/month**
+
+---
+
+## 📊 Example Usage Workflow
+
+### Initial Setup
+
+1. **Create customer:**
+   - Name: "Smile Dental Clinic"
+   - Industry: "dental"
+   - Add credentials for all platforms
+
+2. **First collection (with history):**
+   - Check "12-month history" box
+   - Click Refresh
+   - Wait 5-10 minutes
+   - ☕ Grab coffee while it collects 12 months
+
+3. **View results:**
+   - See all 12 months of data in graphs
+   - Click different KPI cards to explore trends
+   - Identify seasonal patterns
+
+### Ongoing Usage
+
+1. **Monthly updates (without history):**
+   - Uncheck "12-month history" box
+   - Click Refresh
+   - Wait 30-60 seconds
+   - Only collects current month
+
+2. **Dashboard automatically:**
+   - Adds new month to existing 12-month graph
+   - Keeps rolling 12-month window
+   - Always shows last 12 months
+
+---
+
+## 🎉 Benefits Summary
+
+### Firestore Benefits
+
+✅ **Scalability** - Handles millions of records
+✅ **Reliability** - Automatic backups and replication
+✅ **Performance** - Fast queries with indexing
+✅ **Cost-effective** - Pay only for what you use
+✅ **Cloud-native** - Works seamlessly with Cloud Run
+
+### Historical Data Benefits
+
+✅ **Trend analysis** - See performance over time
+✅ **Seasonality** - Identify patterns and cycles
+✅ **Forecasting** - Predict future performance
+✅ **Benchmarking** - Compare to past performance
+✅ **Reporting** - Professional year-over-year reports
+
+---
+
+## 🔮 Future Enhancements
+
+### Possible Next Steps
+
+1. **Export historical data to CSV**
+   - Download 12 months as spreadsheet
+   - Import into Excel for custom analysis
+
+2. **Automated alerts**
+   - Email when metrics drop below threshold
+   - Slack notifications for anomalies
+
+3. **Predictive analytics**
+   - Machine learning on 12-month trends
+   - Forecast next month's performance
+
+4. **Multi-year tracking**
+   - Extend to 24 or 36 months
+   - Year-over-year comparisons
+
+5. **Custom date ranges**
+   - Choose any start/end date
+   - Quarter-by-quarter views
+
+---
+
+## 📞 Quick Reference
+
+### Common Commands
+
+```bash
+# Deploy
+gcloud run deploy contentclicks-dashboard --source . --region us-central1
+
+# View logs
+gcloud run logs read contentclicks-dashboard --region us-central1
+
+# Collect historical data manually
+python data_collector.py --customer-id CUSTOMER_ID --history
+
+# Check Firestore data
+gcloud firestore databases describe --project=YOUR_PROJECT_ID
+```
+
+### Environment Variables
+
+```bash
+# For local development
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
+export FIRESTORE_EMULATOR_HOST=localhost:8080  # For testing
+
+# Production (Cloud Run sets these automatically)
+GOOGLE_CLOUD_PROJECT=your-project-id
+```
+
+---
+
+## ✅ Deployment Checklist
+
+- [ ] Firestore API enabled
+- [ ] Firestore database created (Native mode)
+- [ ] Service account has `roles/datastore.user`
+- [ ] All files updated in project
+- [ ] requirements.txt updated with Firestore
+- [ ] Code deployed to Cloud Run
+- [ ] Tested customer creation
+- [ ] Tested current data collection
+- [ ] Tested 12-month historical collection
+- [ ] Verified graphs show 12 months
+- [ ] Cloud Scheduler set up (optional)
+
+---
+
+## 🎊 You're Ready!
+
+Your dashboard now has:
+- ✅ Cloud-native Firestore storage
+- ✅ 12-month historical data tracking
+- ✅ Beautiful trend graphs
+- ✅ Scalable architecture
+- ✅ Professional analytics
+
+**Deploy and enjoy your upgraded dashboard!** 🚀

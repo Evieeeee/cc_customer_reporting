@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>ContentClicks Customer Journey Report</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 1.5cm;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            color: #303030;
+            line-height: 1.5;
+        }
+        
+        .header {
+            background-color: #006039;
+            color: white;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .header .subtitle {
+            font-size: 18px;
+            opacity: 0.9;
+        }
+        
+        .customer-info {
+            background-color: #F9F6EE;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border-left: 4px solid #A37E2C;
+        }
+        
+        .customer-info h2 {
+            color: #006039;
+            font-size: 24px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .info-row {
+            display: flex;
+            gap: 2rem;
+            margin-top: 0.5rem;
+        }
+        
+        .info-item {
+            font-size: 14px;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            color: #616161;
+        }
+        
+        .section {
+            page-break-inside: avoid;
+            margin-bottom: 3rem;
+        }
+        
+        .section-header {
+            background: linear-gradient(135deg, #006039 0%, #004428 100%);
+            color: white;
+            padding: 1rem 1.5rem;
+            font-size: 20px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            margin-bottom: 1.5rem;
+        }
+        
+        .section-header.website {
+            background: linear-gradient(135deg, #A37E2C 0%, #826419 100%);
+        }
+        
+        .section-header.email {
+            background: linear-gradient(135deg, #006039 0%, #00804d 100%);
+        }
+        
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .kpi-card {
+            background-color: white;
+            border: 1px solid #E0E0E0;
+            padding: 1.5rem;
+            border-radius: 4px;
+        }
+        
+        .kpi-stage {
+            font-size: 10px;
+            font-weight: bold;
+            color: #006039;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+            padding: 0.25rem 0.5rem;
+            background-color: #E8E4DC;
+            display: inline-block;
+            border-radius: 3px;
+        }
+        
+        .kpi-name {
+            font-size: 12px;
+            color: #616161;
+            margin-bottom: 0.5rem;
+        }
+        
+        .kpi-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #006039;
+            margin-bottom: 0.25rem;
+        }
+        
+        .kpi-period {
+            font-size: 11px;
+            color: #757575;
+            margin-bottom: 0.5rem;
+        }
+        
+        .benchmark {
+            font-size: 11px;
+            padding: 0.5rem;
+            border-radius: 3px;
+            background-color: #F5F5F5;
+        }
+        
+        .benchmark.above {
+            background-color: #D1FAE5;
+            color: #00804d;
+        }
+        
+        .benchmark.below {
+            background-color: #FEE2E2;
+            color: #DC2626;
+        }
+        
+        .chart-container {
+            margin-top: 1.5rem;
+            page-break-inside: avoid;
+        }
+        
+        .chart-container img {
+            max-width: 100%;
+            height: auto;
+        }
+        
+        .footer {
+            margin-top: 3rem;
+            text-align: center;
+            font-size: 12px;
+            color: #757575;
+            border-top: 1px solid #E0E0E0;
+            padding-top: 1rem;
+        }
+        
+        .page-break {
+            page-break-after: always;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ContentClicks</h1>
+        <div class="subtitle">Customer Journey Analytics Report</div>
+    </div>
+    
+    <div class="customer-info">
+        <h2>{{ customer.name }}</h2>
+        <div class="info-row">
+            <div class="info-item">
+                <span class="info-label">Industry:</span> {{ customer.industry | title }}
+            </div>
+            <div class="info-item">
+                <span class="info-label">Generated:</span> {{ generated_at }}
+            </div>
+        </div>
+    </div>
+    
+    {% if metrics.social_media %}
+    <div class="section">
+        <div class="section-header">SOCIAL MEDIA</div>
+        
+        <div class="kpi-grid">
+            {% for stage, data in metrics.social_media.items() %}
+            {% if stage in ['awareness', 'engagement', 'conversion', 'retention', 'advocacy'] %}
+            <div class="kpi-card">
+                <div class="kpi-stage">{{ stage | title }}</div>
+                <div class="kpi-name">{{ data.kpi_name }}</div>
+                <div class="kpi-value">
+                    {% if 'rate' in data.kpi_name.lower() or 'score' in data.kpi_name.lower() %}
+                        {{ "%.1f"|format(data.kpi_value) }}%
+                    {% else %}
+                        {{ "{:,.0f}".format(data.kpi_value) }}
+                    {% endif %}
+                </div>
+                <div class="kpi-period">Last {{ data.time_period_days }} days</div>
+                <div class="benchmark {% if data.kpi_value > data.benchmark_value * 1.1 %}above{% elif data.kpi_value < data.benchmark_value * 0.9 %}below{% endif %}">
+                    {% if data.kpi_value > data.benchmark_value * 1.1 %}
+                        â–² {{ "%.0f"|format((data.kpi_value / data.benchmark_value - 1) * 100) }}% Above Benchmark
+                    {% elif data.kpi_value < data.benchmark_value * 0.9 %}
+                        â–¼ {{ "%.0f"|format((1 - data.kpi_value / data.benchmark_value) * 100) }}% Below Benchmark
+                    {% else %}
+                        = Benchmark Met
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        
+        {% if charts.socialMedia %}
+        <div class="chart-container">
+            <img src="{{ charts.socialMedia }}" alt="Social Media Performance Chart">
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    <div class="page-break"></div>
+    
+    {% if metrics.website %}
+    <div class="section">
+        <div class="section-header website">WEBSITE</div>
+        
+        <div class="kpi-grid">
+            {% for stage, data in metrics.website.items() %}
+            {% if stage in ['awareness', 'engagement', 'conversion', 'retention', 'advocacy'] %}
+            <div class="kpi-card">
+                <div class="kpi-stage">{{ stage | title }}</div>
+                <div class="kpi-name">{{ data.kpi_name }}</div>
+                <div class="kpi-value">
+                    {% if 'rate' in data.kpi_name.lower() or 'score' in data.kpi_name.lower() %}
+                        {{ "%.1f"|format(data.kpi_value) }}%
+                    {% else %}
+                        {{ "{:,.0f}".format(data.kpi_value) }}
+                    {% endif %}
+                </div>
+                <div class="kpi-period">Last {{ data.time_period_days }} days</div>
+                <div class="benchmark {% if data.kpi_value > data.benchmark_value * 1.1 %}above{% elif data.kpi_value < data.benchmark_value * 0.9 %}below{% endif %}">
+                    {% if data.kpi_value > data.benchmark_value * 1.1 %}
+                        â–² {{ "%.0f"|format((data.kpi_value / data.benchmark_value - 1) * 100) }}% Above Benchmark
+                    {% elif data.kpi_value < data.benchmark_value * 0.9 %}
+                        â–¼ {{ "%.0f"|format((1 - data.kpi_value / data.benchmark_value) * 100) }}% Below Benchmark
+                    {% else %}
+                        = Benchmark Met
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        
+        {% if charts.website %}
+        <div class="chart-container">
+            <img src="{{ charts.website }}" alt="Website Performance Chart">
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    <div class="page-break"></div>
+    
+    {% if metrics.email %}
+    <div class="section">
+        <div class="section-header email">EMAIL MARKETING</div>
+        
+        <div class="kpi-grid">
+            {% for stage, data in metrics.email.items() %}
+            {% if stage in ['awareness', 'engagement', 'response', 'retention', 'quality'] %}
+            <div class="kpi-card">
+                <div class="kpi-stage">{{ stage | title }}</div>
+                <div class="kpi-name">{{ data.kpi_name }}</div>
+                <div class="kpi-value">
+                    {% if 'rate' in data.kpi_name.lower() or 'score' in data.kpi_name.lower() %}
+                        {{ "%.1f"|format(data.kpi_value) }}%
+                    {% else %}
+                        {{ "{:,.0f}".format(data.kpi_value) }}
+                    {% endif %}
+                </div>
+                <div class="kpi-period">Last {{ data.time_period_days }} days</div>
+                <div class="benchmark {% if data.kpi_value > data.benchmark_value * 1.1 %}above{% elif data.kpi_value < data.benchmark_value * 0.9 %}below{% endif %}">
+                    {% if data.kpi_value > data.benchmark_value * 1.1 %}
+                        â–² {{ "%.0f"|format((data.kpi_value / data.benchmark_value - 1) * 100) }}% Above Benchmark
+                    {% elif data.kpi_value < data.benchmark_value * 0.9 %}
+                        â–¼ {{ "%.0f"|format((1 - data.kpi_value / data.benchmark_value) * 100) }}% Below Benchmark
+                    {% else %}
+                        = Benchmark Met
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        
+        {% if charts.email %}
+        <div class="chart-container">
+            <img src="{{ charts.email }}" alt="Email Marketing Performance Chart">
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    <div class="footer">
+        <p>This report was generated by ContentClicks Customer Journey Analytics Platform</p>
+        <p>Â© {{ generated_at.split()[0].split('-')[0] }} ContentClicks. All rights reserved.</p>
+    </div>
+</body>
+</html>
