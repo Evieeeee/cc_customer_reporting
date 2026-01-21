@@ -653,20 +653,20 @@ class DataCollector:
                 # Store metrics
                 self._store_metric('email', 'awareness', 'Emails Sent',
                                   total_sent, 'emails_sent', days, year, month)
-                self._store_metric('email', 'awareness', 'Delivery Rate',
-                                  delivery_rate, 'delivery_rate', days, year, month)
-                
-                self._store_metric('email', 'engagement', 'Open Rate',
-                                  open_rate, 'open_rate', days, year, month)
-                self._store_metric('email', 'engagement', 'Click Rate',
-                                  click_rate, 'click_rate', days, year, month)
-                
-                self._store_metric('email', 'response', 'Reply Rate',
-                                  reply_rate, 'reply_rate', days, year, month)
-                
-                self._store_metric('email', 'retention', 'Unsubscribe Rate',
-                                  unsubscribe_rate, 'unsubscribe_rate', days, year, month)
-                
+                self._store_metric('email', 'awareness', 'Emails Delivered',
+                                  total_delivered, 'emails_delivered', days, year, month)
+
+                self._store_metric('email', 'engagement', 'Email Opens',
+                                  total_opened, 'email_opens', days, year, month)
+                self._store_metric('email', 'engagement', 'Email Clicks',
+                                  total_clicked, 'email_clicks', days, year, month)
+
+                self._store_metric('email', 'response', 'Email Replies',
+                                  total_replied, 'email_replies', days, year, month)
+
+                self._store_metric('email', 'retention', 'Unsubscribes',
+                                  total_unsubscribed, 'unsubscribes', days, year, month)
+
                 self._store_metric('email', 'quality', 'Deliverability Score',
                                   deliverability_score, 'deliverability_score', days, year, month)
             
@@ -708,68 +708,43 @@ class DataCollector:
             for account in accounts:
                 print(f"  Processing account: {account['page_name']}")
                 
-                # Get Facebook insights with daily data
+                # Get Facebook post engagement data
                 try:
-                    fb_insights = get_facebook_page_insights(
+                    from social_media_analytics import get_facebook_posts_engagement
+
+                    fb_data = get_facebook_posts_engagement(
                         account['page_id'],
                         account['page_token'],
                         days_back=days_total
                     )
-                    
-                    # Parse daily values into monthly buckets
-                    # Use page_media_view (replaces deprecated page_impressions_unique as of Nov 2025)
-                    if 'page_media_view' in fb_insights:
-                        for value_entry in fb_insights['page_media_view'].get('values', []):
-                            date_str = value_entry.get('end_time', '')
-                            value = value_entry.get('value', 0)
 
-                            # Parse date and extract year-month
-                            if date_str:
-                                try:
-                                    date_obj = datetime.strptime(date_str[:10], '%Y-%m-%d')
-                                    month_key = (date_obj.year, date_obj.month)
+                    # Aggregate Facebook data into monthly buckets
+                    for month_str, month_data in fb_data.get('monthly_data', {}).items():
+                        # Parse month string "YYYY-MM"
+                        year, month = map(int, month_str.split('-'))
+                        month_key = (year, month)
 
-                                    if month_key not in monthly_data:
-                                        monthly_data[month_key] = {
-                                            'views': 0,           # Changed from impressions to views
-                                            'engagement': 0,
-                                            'reach': 0,
-                                            'followers': 0
-                                        }
+                        if month_key not in monthly_data:
+                            monthly_data[month_key] = {
+                                'reactions': 0,   # Engagement metric
+                                'comments': 0,    # Response metric
+                                'shares': 0,      # Advocacy metric
+                                'reach': 0,       # Instagram will add to this
+                                'followers': 0    # Page + Instagram followers
+                            }
 
-                                    monthly_data[month_key]['views'] += value
-                                except:
-                                    pass
-                    
-                    # Parse engagement data
-                    if 'page_post_engagements' in fb_insights:
-                        for value_entry in fb_insights['page_post_engagements'].get('values', []):
-                            date_str = value_entry.get('end_time', '')
-                            value = value_entry.get('value', 0)
-                            
-                            if date_str:
-                                try:
-                                    date_obj = datetime.strptime(date_str[:10], '%Y-%m-%d')
-                                    month_key = (date_obj.year, date_obj.month)
-                                    
-                                    if month_key not in monthly_data:
-                                        monthly_data[month_key] = {
-                                            'views': 0,
-                                            'engagement': 0,
-                                            'reach': 0,
-                                            'followers': 0
-                                        }
+                        monthly_data[month_key]['reactions'] += month_data.get('reactions', 0)
+                        monthly_data[month_key]['comments'] += month_data.get('comments', 0)
+                        monthly_data[month_key]['shares'] += month_data.get('shares', 0)
 
-                                    monthly_data[month_key]['engagement'] += value
-                                except:
-                                    pass
-                    
-                    # Add follower count (point-in-time, not cumulative)
+                    # Add follower count (point-in-time from page object)
                     for month_key in monthly_data:
                         monthly_data[month_key]['followers'] += account.get('fan_count', 0)
-                    
+
                 except Exception as e:
                     print(f"    [ERROR] Facebook failed: {e}")
+                    import traceback
+                    traceback.print_exc()
                 
                 # Get Instagram insights
                 if account.get('instagram_id'):
@@ -845,21 +820,26 @@ class DataCollector:
                 month_start = datetime(year, month, 1)
                 days = (next_month - month_start).days
                 
-                # Calculate engagement rate
-                total_reach = data['reach'] if data['reach'] > 0 else data['views']
-                engagement_rate = (data['engagement'] / total_reach * 100) if total_reach > 0 else 0
-
-                # Store metrics
+                # Store metrics mapped to journey stages
+                # AWARENESS: Reach from Instagram
                 self._store_metric('social_media', 'awareness', 'Reach',
-                                  data['reach'], 'reach', days, year, month)
-                self._store_metric('social_media', 'awareness', 'Views',
-                                  data['views'], 'views', days, year, month)  # Changed from Impressions to Views
-                self._store_metric('social_media', 'engagement', 'Engagement Rate',
-                                  engagement_rate, 'engagement_rate', days, year, month)
-                self._store_metric('social_media', 'engagement', 'Total Interactions',
-                                  data['engagement'], 'interactions', days, year, month)
-                self._store_metric('social_media', 'retention', 'Follower Count',
-                                  data['followers'], 'follower_growth', days, year, month)
+                                  data.get('reach', 0), 'reach', days, year, month)
+
+                # ENGAGEMENT: Post reactions (Facebook)
+                self._store_metric('social_media', 'engagement', 'Reactions',
+                                  data.get('reactions', 0), 'reactions', days, year, month)
+
+                # RESPONSE: Post comments (Facebook)
+                self._store_metric('social_media', 'response', 'Comments',
+                                  data.get('comments', 0), 'comments', days, year, month)
+
+                # ADVOCACY: Post shares (Facebook)
+                self._store_metric('social_media', 'advocacy', 'Shares',
+                                  data.get('shares', 0), 'shares', days, year, month)
+
+                # RETENTION: Follower count (Facebook + Instagram)
+                self._store_metric('social_media', 'retention', 'Followers',
+                                  data.get('followers', 0), 'followers', days, year, month)
             
             print(f"  ✓ Stored {len(monthly_data)} months of social media data")
             

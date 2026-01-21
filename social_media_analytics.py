@@ -498,66 +498,92 @@ def get_all_pages_and_instagram_accounts(system_token):
     return accounts
 
 
-def get_facebook_page_insights(page_id, page_token, days_back=7):
+def get_facebook_posts_engagement(page_id, page_token, days_back=365):
     """
-    Get Facebook page-level insights with daily period granularity
-    Uses period='day' for native API monthly segmentation
+    Get Facebook posts and aggregate engagement metrics
+    Uses Posts API (not deprecated Page Insights) for 12-month historical data
 
-    UPDATED FOR 2026: Impressions metrics deprecated November 2025
-    Now using Views metrics (page_media_view, post_media_view)
+    2026 UPDATE: Page Insights heavily deprecated - using Posts for engagement
+
+    Maps to journey stages:
+    - Awareness: Post reach/views (from post insights if available)
+    - Engagement: Total reactions across all posts
+    - Response: Comments on posts
+    - Retention: Page likes (from page object)
+    - Advocacy: Shares of posts
 
     Args:
         page_id: Facebook page ID
         page_token: Page access token
-        days_back: Number of days of historical data to retrieve
+        days_back: Number of days of historical data
 
-    Returns: Dictionary of insights by metric with daily values
+    Returns: Dictionary with monthly_data aggregated by month
     """
-    # Updated metrics for v24.0 (November 2025 deprecations applied)
-    # Replaced impressions with views metrics
-    metrics = [
-        'page_post_engagements',      # Still works
-        'page_media_view',             # Replaces page_impressions_unique
-        'page_engaged_users',          # Still works
-        'page_post_reactions_like',    # Reactions still work
-        'page_post_reactions_love',
-        'page_post_reactions_wow',
-        'page_post_reactions_haha',
-        'page_post_reactions_sorry',
-        'page_post_reactions_anger',
-        'page_actions_post_reactions_total'  # Total reactions
-    ]
+    print(f"  [Facebook] Fetching posts for last {days_back} days...")
 
-    # Calculate date range
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days_back)
 
-    insights = {}
-    for metric in metrics:
-        url = f"https://graph.facebook.com/{API_VERSION}/{page_id}/insights"
-        params = {
-            'metric': metric,
-            'period': 'day',  # Native API daily granularity for monthly segmentation
-            'access_token': page_token,
-            'since': start_date.strftime('%Y-%m-%d'),
-            'until': end_date.strftime('%Y-%m-%d')
-        }
+    # Get all posts in the date range
+    url = f"https://graph.facebook.com/{API_VERSION}/{page_id}/posts"
+    params = {
+        'fields': 'id,created_time,message,reactions.summary(true),comments.summary(true),shares',
+        'since': int(start_date.timestamp()),
+        'until': int(end_date.timestamp()),
+        'limit': 100,
+        'access_token': page_token
+    }
 
-        try:
+    monthly_data = {}
+    posts_fetched = 0
+
+    try:
+        while url:
             response = requests.get(url, params=params, timeout=30)
             response.raise_for_status()
-            data = response.json().get('data', [])
-            if data:
-                insights[metric] = {
-                    'name': data[0].get('name'),
-                    'description': data[0].get('description'),
-                    'values': data[0].get('values', [])
-                }
-        except requests.exceptions.RequestException as e:
-            print(f"  Warning: Failed to fetch {metric}: {e}")
-            insights[metric] = {'error': str(e)}
+            data = response.json()
 
-    return insights
+            posts = data.get('data', [])
+            posts_fetched += len(posts)
+
+            for post in posts:
+                # Parse post date
+                created_time = post.get('created_time')
+                if not created_time:
+                    continue
+
+                post_date = datetime.strptime(created_time[:10], '%Y-%m-%d')
+                month_key = f"{post_date.year}-{post_date.month:02d}"
+
+                # Initialize month bucket
+                if month_key not in monthly_data:
+                    monthly_data[month_key] = {
+                        'reactions': 0,     # Engagement metric
+                        'comments': 0,      # Response metric
+                        'shares': 0,        # Advocacy metric
+                        'posts_count': 0    # For averaging
+                    }
+
+                # Aggregate engagement from post fields (not insights - these always work!)
+                reactions_data = post.get('reactions', {}).get('summary', {})
+                comments_data = post.get('comments', {}).get('summary', {})
+                shares_count = post.get('shares', {}).get('count', 0)
+
+                monthly_data[month_key]['reactions'] += reactions_data.get('total_count', 0)
+                monthly_data[month_key]['comments'] += comments_data.get('total_count', 0)
+                monthly_data[month_key]['shares'] += shares_count
+                monthly_data[month_key]['posts_count'] += 1
+
+            # Check for next page
+            url = data.get('paging', {}).get('next')
+            params = {}  # Next URL has params already
+
+        print(f"  [Facebook] ✓ Processed {posts_fetched} posts across {len(monthly_data)} months")
+
+    except requests.exceptions.RequestException as e:
+        print(f"  [Facebook] Error fetching posts: {e}")
+
+    return {'monthly_data': monthly_data}
 
 
 def get_instagram_account_insights(instagram_id, page_token, days_back=7):
