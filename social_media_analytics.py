@@ -430,20 +430,253 @@ def collect_social_media_real_metrics(page_id, page_token, instagram_id, days_ba
     return result
 
 
+# ============================================================================
+# HELPER FUNCTIONS FOR DATA COLLECTOR
+# ============================================================================
+
+def get_all_pages_and_instagram_accounts(system_token):
+    """
+    Get all Facebook pages accessible by the system user token
+    and their linked Instagram Business accounts
+
+    Returns: List of account dictionaries with page and Instagram info
+    """
+    url = f"https://graph.facebook.com/{API_VERSION}/me/accounts"
+    params = {'access_token': system_token}
+
+    try:
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        pages_data = response.json().get('data', [])
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching pages: {e}")
+        return []
+
+    accounts = []
+    for page in pages_data:
+        page_id = page['id']
+        page_token = page['access_token']
+        page_name = page['name']
+
+        # Get Instagram account if linked
+        ig_url = f"https://graph.facebook.com/{API_VERSION}/{page_id}"
+        ig_params = {
+            'fields': 'instagram_business_account,fan_count,followers_count',
+            'access_token': system_token
+        }
+
+        try:
+            ig_response = requests.get(ig_url, params=ig_params, timeout=30)
+            ig_response.raise_for_status()
+            ig_data = ig_response.json()
+
+            instagram_id = ig_data.get('instagram_business_account', {}).get('id')
+            fan_count = ig_data.get('fan_count', 0)
+            followers_count = ig_data.get('followers_count', 0)
+        except requests.exceptions.RequestException:
+            instagram_id = None
+            fan_count = 0
+            followers_count = 0
+
+        accounts.append({
+            'page_name': page_name,
+            'page_id': page_id,
+            'page_token': page_token,
+            'instagram_id': instagram_id,
+            'fan_count': fan_count,
+            'followers_count': followers_count
+        })
+
+    return accounts
+
+
+def get_facebook_page_insights(page_id, page_token, days_back=7):
+    """
+    Get Facebook page-level insights with daily period granularity
+    Uses period='day' for native API monthly segmentation
+
+    Args:
+        page_id: Facebook page ID
+        page_token: Page access token
+        days_back: Number of days of historical data to retrieve
+
+    Returns: Dictionary of insights by metric with daily values
+    """
+    metrics = [
+        'page_post_engagements',
+        'page_impressions_unique',
+        'page_posts_impressions',
+        'page_posts_impressions_unique',
+        'page_actions_post_reactions_total',
+        'page_video_views',
+        'page_total_actions'
+    ]
+
+    # Calculate date range
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days_back)
+
+    insights = {}
+    for metric in metrics:
+        url = f"https://graph.facebook.com/{API_VERSION}/{page_id}/insights"
+        params = {
+            'metric': metric,
+            'period': 'day',  # Native API daily granularity for monthly segmentation
+            'access_token': page_token,
+            'since': start_date.strftime('%Y-%m-%d'),
+            'until': end_date.strftime('%Y-%m-%d')
+        }
+
+        try:
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json().get('data', [])
+            if data:
+                insights[metric] = {
+                    'name': data[0].get('name'),
+                    'description': data[0].get('description'),
+                    'values': data[0].get('values', [])
+                }
+        except requests.exceptions.RequestException as e:
+            print(f"  Warning: Failed to fetch {metric}: {e}")
+            insights[metric] = {'error': str(e)}
+
+    return insights
+
+
+def get_instagram_account_insights(instagram_id, page_token, days_back=7):
+    """
+    Get Instagram account-level insights with daily period granularity
+    Uses period='day' for native API monthly segmentation
+
+    Args:
+        instagram_id: Instagram Business Account ID
+        page_token: Page access token
+        days_back: Number of days of historical data
+
+    Returns: Dictionary of account insights with daily values
+    """
+    insights = {}
+
+    # Calculate date range
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days_back)
+
+    url = f"https://graph.facebook.com/{API_VERSION}/{instagram_id}/insights"
+
+    # Metrics that support period='day'
+    daily_metrics = ['reach', 'impressions', 'profile_views', 'website_clicks']
+
+    for metric in daily_metrics:
+        try:
+            params = {
+                'metric': metric,
+                'period': 'day',  # Native API daily granularity for monthly segmentation
+                'access_token': page_token,
+                'since': start_date.strftime('%Y-%m-%d'),
+                'until': end_date.strftime('%Y-%m-%d')
+            }
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json().get('data', [])
+            if data:
+                insights[metric] = data[0].get('values', [])
+        except requests.exceptions.RequestException as e:
+            print(f"  Warning: Failed to fetch {metric}: {e}")
+
+    # Follower count (doesn't support since/until, returns latest values)
+    try:
+        params = {
+            'metric': 'follower_count',
+            'period': 'day',
+            'access_token': page_token
+        }
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        data = response.json().get('data', [])
+        if data:
+            insights['follower_count'] = data[0].get('values', [])
+    except requests.exceptions.RequestException as e:
+        print(f"  Warning: Failed to fetch follower_count: {e}")
+
+    return insights
+
+
+def get_instagram_media_insights(instagram_id, page_token, limit=20):
+    """
+    Get Instagram media (posts) and their insights
+
+    Args:
+        instagram_id: Instagram Business Account ID
+        page_token: Page access token
+        limit: Number of recent posts to retrieve
+
+    Returns: List of media with insights
+    """
+    # Get recent media
+    media_url = f"https://graph.facebook.com/{API_VERSION}/{instagram_id}/media"
+    media_params = {
+        'fields': 'id,caption,media_type,timestamp,permalink',
+        'limit': limit,
+        'access_token': page_token
+    }
+
+    try:
+        media_response = requests.get(media_url, params=media_params, timeout=30)
+        media_response.raise_for_status()
+        media_list = media_response.json().get('data', [])
+    except requests.exceptions.RequestException as e:
+        print(f"  Warning: Failed to fetch media: {e}")
+        return []
+
+    media_insights = []
+    for media in media_list:
+        media_id = media['id']
+
+        # Get insights for this media
+        insights_url = f"https://graph.facebook.com/{API_VERSION}/{media_id}/insights"
+        metrics = ['reach', 'saved', 'likes', 'comments', 'shares', 'total_interactions']
+
+        post_data = {
+            'id': media_id,
+            'caption': media.get('caption', '')[:100] + '...' if media.get('caption') and len(media.get('caption', '')) > 100 else media.get('caption', ''),
+            'media_type': media.get('media_type'),
+            'timestamp': media.get('timestamp'),
+            'permalink': media.get('permalink'),
+            'insights': {}
+        }
+
+        for metric in metrics:
+            try:
+                params = {'metric': metric, 'access_token': page_token}
+                response = requests.get(insights_url, params=params, timeout=10)
+                response.raise_for_status()
+                data = response.json().get('data', [])
+                if data:
+                    values = data[0].get('values', [{}])
+                    post_data['insights'][metric] = values[0].get('value') if values else 0
+            except requests.exceptions.RequestException:
+                post_data['insights'][metric] = 0
+
+        media_insights.append(post_data)
+
+    return media_insights
+
+
 if __name__ == '__main__':
     # Test with your credentials
     import sys
-    
+
     if len(sys.argv) < 4:
         print("Usage: python real_metrics.py PAGE_ID PAGE_TOKEN INSTAGRAM_ID")
         sys.exit(1)
-    
+
     page_id = sys.argv[1]
     page_token = sys.argv[2]
     instagram_id = sys.argv[3]
-    
+
     data = collect_social_media_real_metrics(page_id, page_token, instagram_id, days_back=30)
-    
+
     # Print summary
     print("\nSUMMARY BY MONTH:\n")
     for month in sorted([k for k in data.keys() if k != 'current_followers']):
