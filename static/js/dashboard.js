@@ -601,8 +601,24 @@ function renderChart(medium, history, kpiName) {
         charts[medium === 'social_media' ? 'socialMedia' : medium].destroy();
     }
     
-    // Prepare data
-    const labels = history.map(h => new Date(h.recorded_at).toLocaleDateString());
+    // Prepare data - use historical month/year, not recorded_at
+    const labels = history.map(h => {
+        // Use the 'date' field which is in format "YYYY-MM"
+        if (h.date) {
+            const [year, month] = h.date.split('-');
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return `${monthNames[parseInt(month) - 1]} ${year}`;
+        }
+        // Fallback to year-month if date field not present
+        if (h.year && h.month) {
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return `${monthNames[h.month - 1]} ${h.year}`;
+        }
+        // Last resort: use recorded_at
+        return new Date(h.recorded_at).toLocaleDateString();
+    });
     const actualValues = history.map(h => h.kpi_value);
     const benchmarkValues = history.map(h => h.benchmark_value);
     
