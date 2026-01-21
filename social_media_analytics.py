@@ -547,34 +547,31 @@ def get_facebook_page_insights(page_id, page_token, days_back=7):
 def get_instagram_account_insights(instagram_id, page_token, days_back=7):
     """
     Get Instagram account-level insights with daily period granularity
-    Uses period='day' for native API monthly segmentation
+    Note: Instagram API with period='day' only returns last 30 days (no since/until support)
 
     Args:
         instagram_id: Instagram Business Account ID
         page_token: Page access token
-        days_back: Number of days of historical data
+        days_back: Number of days of historical data (max 30 for Instagram)
 
     Returns: Dictionary of account insights with daily values
     """
     insights = {}
 
-    # Calculate date range
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days_back)
-
     url = f"https://graph.facebook.com/{API_VERSION}/{instagram_id}/insights"
 
     # Metrics that support period='day'
+    # NOTE: Instagram API does NOT support since/until with period='day'
+    # It returns last 30 days automatically
     daily_metrics = ['reach', 'impressions', 'profile_views', 'website_clicks']
 
     for metric in daily_metrics:
         try:
             params = {
                 'metric': metric,
-                'period': 'day',  # Native API daily granularity for monthly segmentation
-                'access_token': page_token,
-                'since': start_date.strftime('%Y-%m-%d'),
-                'until': end_date.strftime('%Y-%m-%d')
+                'period': 'day',  # Returns last 30 days of daily data
+                'access_token': page_token
+                # NOTE: No since/until - Instagram doesn't support it with period='day'
             }
             response = requests.get(url, params=params, timeout=30)
             response.raise_for_status()
