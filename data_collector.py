@@ -695,26 +695,27 @@ class DataCollector:
                     )
                     
                     # Parse daily values into monthly buckets
-                    if 'page_impressions_unique' in fb_insights:
-                        for value_entry in fb_insights['page_impressions_unique'].get('values', []):
+                    # Use page_media_view (replaces deprecated page_impressions_unique as of Nov 2025)
+                    if 'page_media_view' in fb_insights:
+                        for value_entry in fb_insights['page_media_view'].get('values', []):
                             date_str = value_entry.get('end_time', '')
                             value = value_entry.get('value', 0)
-                            
+
                             # Parse date and extract year-month
                             if date_str:
                                 try:
                                     date_obj = datetime.strptime(date_str[:10], '%Y-%m-%d')
                                     month_key = (date_obj.year, date_obj.month)
-                                    
+
                                     if month_key not in monthly_data:
                                         monthly_data[month_key] = {
-                                            'impressions': 0,
+                                            'views': 0,           # Changed from impressions to views
                                             'engagement': 0,
                                             'reach': 0,
                                             'followers': 0
                                         }
-                                    
-                                    monthly_data[month_key]['impressions'] += value
+
+                                    monthly_data[month_key]['views'] += value
                                 except:
                                     pass
                     
@@ -731,12 +732,12 @@ class DataCollector:
                                     
                                     if month_key not in monthly_data:
                                         monthly_data[month_key] = {
-                                            'impressions': 0,
+                                            'views': 0,
                                             'engagement': 0,
                                             'reach': 0,
                                             'followers': 0
                                         }
-                                    
+
                                     monthly_data[month_key]['engagement'] += value
                                 except:
                                     pass
@@ -770,7 +771,7 @@ class DataCollector:
 
                                         if month_key not in monthly_data:
                                             monthly_data[month_key] = {
-                                                'impressions': 0,
+                                                'views': 0,
                                                 'engagement': 0,
                                                 'reach': 0,
                                                 'followers': 0
@@ -793,13 +794,13 @@ class DataCollector:
 
                                         if month_key not in monthly_data:
                                             monthly_data[month_key] = {
-                                                'impressions': 0,
+                                                'views': 0,
                                                 'engagement': 0,
                                                 'reach': 0,
                                                 'followers': 0
                                             }
 
-                                        monthly_data[month_key]['impressions'] += value
+                                        monthly_data[month_key]['views'] += value  # Instagram impressions count as views
                                     except:
                                         pass
 
@@ -823,14 +824,14 @@ class DataCollector:
                 days = (next_month - month_start).days
                 
                 # Calculate engagement rate
-                total_reach = data['reach'] if data['reach'] > 0 else data['impressions']
+                total_reach = data['reach'] if data['reach'] > 0 else data['views']
                 engagement_rate = (data['engagement'] / total_reach * 100) if total_reach > 0 else 0
-                
+
                 # Store metrics
                 self._store_metric('social_media', 'awareness', 'Reach',
                                   data['reach'], 'reach', days, year, month)
-                self._store_metric('social_media', 'awareness', 'Impressions',
-                                  data['impressions'], 'impressions', days, year, month)
+                self._store_metric('social_media', 'awareness', 'Views',
+                                  data['views'], 'views', days, year, month)  # Changed from Impressions to Views
                 self._store_metric('social_media', 'engagement', 'Engagement Rate',
                                   engagement_rate, 'engagement_rate', days, year, month)
                 self._store_metric('social_media', 'engagement', 'Total Interactions',
