@@ -2,7 +2,7 @@
 Data Collector for ContentClicks Dashboard
 Integrates Social Media, Email, and GA4 Analytics with TRUE 12-month historical tracking
 
-VERSION 4.2 - NATIVE API OPTIMIZATION - BUILD 20260121
+VERSION 4.3 - INSTAGRAM 12-MONTH HISTORICAL - BUILD 20260121
 NATIVE API FUNCTIONALITY FOR EACH SYSTEM:
 
 1. GA4 (Google Analytics 4):
@@ -13,9 +13,11 @@ NATIVE API FUNCTIONALITY FOR EACH SYSTEM:
 
 2. Social Media (Facebook/Instagram):
    - Facebook: Uses period='day' with since/until for full date range (1 API call)
-   - Instagram: Uses period='day' (returns last 30 days only - API limitation)
+   - Instagram: Makes 12 API calls (30-day chunks) to build 12-month history
+     * Each call: period='day' with since/until for 30-day window
+     * Metrics: reach, impressions (profile_views/website_clicks deprecated Jan 2025)
+     * Daily data aggregated into monthly buckets
    - Returns daily data points which are aggregated into months
-   - Note: Instagram Insights API does not support since/until with period='day'
 
 3. Email (Instantly):
    - Gets all campaigns in ONE API call, grouped by start_date field
@@ -23,7 +25,8 @@ NATIVE API FUNCTIONALITY FOR EACH SYSTEM:
    - Passes proper date ranges (start_date/end_date) for accurate metrics
    - Reduces API calls significantly vs individual campaign fetches
 
-Total efficiency: Single or minimal API calls per data source
+Total API calls: ~15 (1 GA4, 12 Instagram chunks, 1-2 Email/Social)
+Improvement: Was 36+ calls (12 months × 3 sources), now ~15 calls with full historical data
 """
 
 import sys
@@ -738,12 +741,12 @@ class DataCollector:
                             for value_entry in ig_insights['reach']:
                                 date_str = value_entry.get('end_time', '')
                                 value = value_entry.get('value', 0)
-                                
+
                                 if date_str:
                                     try:
                                         date_obj = datetime.strptime(date_str[:10], '%Y-%m-%d')
                                         month_key = (date_obj.year, date_obj.month)
-                                        
+
                                         if month_key not in monthly_data:
                                             monthly_data[month_key] = {
                                                 'impressions': 0,
@@ -751,11 +754,34 @@ class DataCollector:
                                                 'reach': 0,
                                                 'followers': 0
                                             }
-                                        
+
                                         monthly_data[month_key]['reach'] += value
                                     except:
                                         pass
-                        
+
+                        # Parse impressions data
+                        if 'impressions' in ig_insights:
+                            for value_entry in ig_insights['impressions']:
+                                date_str = value_entry.get('end_time', '')
+                                value = value_entry.get('value', 0)
+
+                                if date_str:
+                                    try:
+                                        date_obj = datetime.strptime(date_str[:10], '%Y-%m-%d')
+                                        month_key = (date_obj.year, date_obj.month)
+
+                                        if month_key not in monthly_data:
+                                            monthly_data[month_key] = {
+                                                'impressions': 0,
+                                                'engagement': 0,
+                                                'reach': 0,
+                                                'followers': 0
+                                            }
+
+                                        monthly_data[month_key]['impressions'] += value
+                                    except:
+                                        pass
+
                         # Add follower count
                         for month_key in monthly_data:
                             monthly_data[month_key]['followers'] += account.get('followers_count', 0)

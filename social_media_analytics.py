@@ -157,75 +157,85 @@ def get_facebook_post_insights_bulk(page_id, page_token, days_back=365):
 
 def get_instagram_insights_bulk(instagram_id, page_token, days_back=365):
     """
-    Get Instagram ACCOUNT insights (these still work!)
-    
-    Returns REAL metrics:
+    Get Instagram ACCOUNT insights with supported metrics only
+
+    DEPRECATED METRICS (removed Jan 2025):
+    - profile_views, website_clicks, phone_call_clicks, text_message_clicks
+
+    SUPPORTED METRICS:
     - Reach (daily aggregation)
     - Impressions (daily aggregation)
-    - Profile views (daily aggregation)
-    - Website clicks (daily aggregation)
     - Follower count (current)
-    
-    All metrics are REAL from Instagram API!
+
+    Makes multiple 30-day API calls to build historical data
     """
     print(f"  [Instagram] Fetching account insights for last {days_back} days...")
-    
+
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days_back)
-    
+
     insights_url = f"https://graph.facebook.com/{API_VERSION}/{instagram_id}/insights"
-    
-    # Request multiple metrics at once
-    metrics = 'reach,impressions,profile_views,website_clicks'
-    params = {
-        'metric': metrics,
-        'period': 'day',
-        'access_token': page_token,
-        'since': start_date.strftime('%Y-%m-%d'),
-        'until': end_date.strftime('%Y-%m-%d')
-    }
-    
+
+    # Supported metrics only (deprecated metrics removed)
+    metrics = 'reach,impressions'
+
     monthly_data = {}
-    
-    try:
-        response = requests.get(insights_url, params=params, timeout=30)
-        response.raise_for_status()
-        data = response.json().get('data', [])
-        
-        # Process each metric's daily values
-        for metric_obj in data:
-            metric_name = metric_obj.get('name')
-            values = metric_obj.get('values', [])
-            
-            for value_obj in values:
-                value = value_obj.get('value', 0)
-                end_time = value_obj.get('end_time', '')
-                
-                if not end_time:
-                    continue
-                
-                # Parse date and determine month
-                date = datetime.strptime(end_time[:10], '%Y-%m-%d')
-                month_key = f"{date.year}-{date.month:02d}"
-                
-                # Initialize month bucket
-                if month_key not in monthly_data:
-                    monthly_data[month_key] = {
-                        'reach': 0,
-                        'impressions': 0,
-                        'profile_views': 0,
-                        'website_clicks': 0
-                    }
-                
-                # Aggregate by month
-                if metric_name in monthly_data[month_key]:
-                    monthly_data[month_key][metric_name] += value
-        
-        print(f"  [Instagram] ✓ Collected account data for {len(monthly_data)} months")
-        
-    except Exception as e:
-        print(f"  [Instagram] Failed to get account insights: {e}")
-    
+
+    # Split into 30-day chunks
+    current_chunk_end = end_date
+    while current_chunk_end > start_date:
+        current_chunk_start = max(current_chunk_end - timedelta(days=30), start_date)
+
+        print(f"    Fetching chunk: {current_chunk_start.strftime('%Y-%m-%d')} to {current_chunk_end.strftime('%Y-%m-%d')}")
+
+        params = {
+            'metric': metrics,
+            'period': 'day',
+            'access_token': page_token,
+            'since': current_chunk_start.strftime('%Y-%m-%d'),
+            'until': current_chunk_end.strftime('%Y-%m-%d')
+        }
+
+        try:
+            response = requests.get(insights_url, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json().get('data', [])
+
+            # Process each metric's daily values
+            for metric_obj in data:
+                metric_name = metric_obj.get('name')
+                values = metric_obj.get('values', [])
+
+                for value_obj in values:
+                    value = value_obj.get('value', 0)
+                    end_time = value_obj.get('end_time', '')
+
+                    if not end_time:
+                        continue
+
+                    # Parse date and determine month
+                    date = datetime.strptime(end_time[:10], '%Y-%m-%d')
+                    month_key = f"{date.year}-{date.month:02d}"
+
+                    # Initialize month bucket
+                    if month_key not in monthly_data:
+                        monthly_data[month_key] = {
+                            'reach': 0,
+                            'impressions': 0
+                        }
+
+                    # Aggregate by month
+                    if metric_name in monthly_data[month_key]:
+                        monthly_data[month_key][metric_name] += value
+
+        except Exception as e:
+            print(f"    Warning: Failed chunk {current_chunk_start.strftime('%Y-%m-%d')}: {e}")
+
+        # Move to next chunk
+        current_chunk_end = current_chunk_start - timedelta(days=1)
+
+    print(f"  [Instagram] ✓ Collected account data for {len(monthly_data)} months")
+
     # Get current follower count
     try:
         follower_params = {
@@ -355,8 +365,7 @@ def collect_social_media_real_metrics(page_id, page_token, instagram_id, days_ba
     
     Conversion:
     - Facebook clicks (post_clicks)
-    - Instagram profile views
-    - Instagram website clicks
+    # Note: Instagram profile_views and website_clicks deprecated Jan 2025
     
     Retention:
     - Facebook fan count
@@ -403,9 +412,8 @@ def collect_social_media_real_metrics(page_id, page_token, instagram_id, days_ba
             },
             # CONVERSION
             'conversion': {
-                'clicks': fb_month.get('clicks', 0),
-                'profile_views': ig_account_month.get('profile_views', 0),
-                'website_clicks': ig_account_month.get('website_clicks', 0)
+                'clicks': fb_month.get('clicks', 0)
+                # Note: Instagram profile_views and website_clicks deprecated Jan 2025
             },
             # RETENTION
             'retention': {
@@ -547,41 +555,68 @@ def get_facebook_page_insights(page_id, page_token, days_back=7):
 def get_instagram_account_insights(instagram_id, page_token, days_back=7):
     """
     Get Instagram account-level insights with daily period granularity
-    Note: Instagram API with period='day' only returns last 30 days (no since/until support)
+    Makes multiple 30-day API calls to build historical data up to 12 months
+
+    DEPRECATED METRICS (removed as of Jan 2025):
+    - profile_views, website_clicks, phone_call_clicks, text_message_clicks
+
+    SUPPORTED METRICS:
+    - reach, impressions, follower_count
 
     Args:
         instagram_id: Instagram Business Account ID
         page_token: Page access token
-        days_back: Number of days of historical data (max 30 for Instagram)
+        days_back: Number of days of historical data (will split into 30-day chunks)
 
-    Returns: Dictionary of account insights with daily values
+    Returns: Dictionary of account insights with daily values across entire period
     """
     insights = {}
 
     url = f"https://graph.facebook.com/{API_VERSION}/{instagram_id}/insights"
 
-    # Metrics that support period='day'
-    # NOTE: Instagram API does NOT support since/until with period='day'
-    # It returns last 30 days automatically
-    daily_metrics = ['reach', 'impressions', 'profile_views', 'website_clicks']
+    # Supported metrics only (deprecated metrics removed Jan 2025)
+    daily_metrics = ['reach', 'impressions']
 
+    # Calculate how many 30-day chunks we need
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days_back)
+
+    # Split into 30-day chunks (Instagram API limit)
+    current_chunk_end = end_date
+    all_values = {metric: [] for metric in daily_metrics}
+
+    while current_chunk_end > start_date:
+        current_chunk_start = max(current_chunk_end - timedelta(days=30), start_date)
+
+        print(f"    Fetching Instagram {current_chunk_start.strftime('%Y-%m-%d')} to {current_chunk_end.strftime('%Y-%m-%d')}")
+
+        for metric in daily_metrics:
+            try:
+                params = {
+                    'metric': metric,
+                    'period': 'day',
+                    'since': current_chunk_start.strftime('%Y-%m-%d'),
+                    'until': current_chunk_end.strftime('%Y-%m-%d'),
+                    'access_token': page_token
+                }
+                response = requests.get(url, params=params, timeout=30)
+                response.raise_for_status()
+                data = response.json().get('data', [])
+                if data:
+                    values = data[0].get('values', [])
+                    all_values[metric].extend(values)
+            except requests.exceptions.RequestException as e:
+                print(f"      Warning: Failed to fetch {metric}: {e}")
+
+        # Move to next chunk (go backwards in time)
+        current_chunk_end = current_chunk_start - timedelta(days=1)
+
+    # Store aggregated values
     for metric in daily_metrics:
-        try:
-            params = {
-                'metric': metric,
-                'period': 'day',  # Returns last 30 days of daily data
-                'access_token': page_token
-                # NOTE: No since/until - Instagram doesn't support it with period='day'
-            }
-            response = requests.get(url, params=params, timeout=30)
-            response.raise_for_status()
-            data = response.json().get('data', [])
-            if data:
-                insights[metric] = data[0].get('values', [])
-        except requests.exceptions.RequestException as e:
-            print(f"  Warning: Failed to fetch {metric}: {e}")
+        if all_values[metric]:
+            insights[metric] = all_values[metric]
 
-    # Follower count (doesn't support since/until, returns latest values)
+    # Follower count (lifetime metric, returns current value only)
     try:
         params = {
             'metric': 'follower_count',
