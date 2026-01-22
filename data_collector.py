@@ -468,119 +468,28 @@ class DataCollector:
     
     def collect_email_bulk(self, start_month: datetime, end_month: datetime):
         """
-        Collect email data for ALL 12 months in ONE API call
-        Gets all campaigns and groups them by start_date field
+        Collect email data for 12 months using aggregate analytics endpoint
+        Makes 1 API call per month for aggregate metrics across all campaigns
         """
         email_creds = self.credentials.get('email', {})
         instantly_key = email_creds.get('instantly_api_key')
-        
+
         if not instantly_key:
             print("  [WARNING] No email credentials")
             return
-        
+
         try:
             fetcher = InstantlyFetcher(instantly_key)
-            
-            # Get ALL campaigns (1 API call)
-            campaigns = fetcher.get_all_campaigns()
-            
-            if not campaigns:
-                print("  [WARNING] No campaigns found")
-                return
-            
-            print(f"  Found {len(campaigns)} campaigns")
-            
-            # Group campaigns by month based on start_date
-            campaigns_by_month = {}
-            
-            for idx, campaign in enumerate(campaigns):
-                if idx == 0:
-                    print(f"  [DEBUG] First campaign keys: {list(campaign.keys())}")
-                    print(f"  [DEBUG] Checking date fields...")
-                    print(f"  [DEBUG]   start_date = {repr(campaign.get('start_date'))}")
-                    print(f"  [DEBUG]   timestamp_created = {repr(campaign.get('timestamp_created'))}")
-                    print(f"  [DEBUG]   created_at = {repr(campaign.get('created_at'))}")
 
-                # Get campaign start_date - try multiple fields
-                start_date = campaign.get('start_date') or campaign.get('timestamp_created') or campaign.get('created_at')
+            print(f"  Fetching email analytics from {start_month.strftime('%Y-%m')} to {end_month.strftime('%Y-%m')}")
 
-                if idx == 0:
-                    print(f"  [DEBUG] Selected start_date: {repr(start_date)}")
-                    print(f"  [DEBUG] Type: {type(start_date)}")
-                    print(f"  [DEBUG] Bool value: {bool(start_date)}")
+            # Iterate through each month and get aggregate analytics
+            current_month = start_month
+            months_processed = 0
 
-                if not start_date:
-                    print(f"  [WARNING] Campaign {campaign.get('name', 'Unknown')} has no date field, skipping")
-                    continue
-
-                # Parse date (format may vary, handle multiple formats)
-                campaign_date = None
-                try:
-                    # Try Unix timestamp first (if it's a number)
-                    if isinstance(start_date, (int, float)):
-                        # Handle both seconds and milliseconds timestamps
-                        if start_date > 10000000000:  # Milliseconds (JavaScript style)
-                            campaign_date = datetime.fromtimestamp(start_date / 1000)
-                        else:  # Seconds (Unix timestamp)
-                            campaign_date = datetime.fromtimestamp(start_date)
-                    elif isinstance(start_date, str):
-                        # Try ISO format
-                        try:
-                            campaign_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-                        except:
-                            # Try common format YYYY-MM-DD
-                            campaign_date = datetime.strptime(start_date[:10], '%Y-%m-%d')
-                except Exception as e:
-                    print(f"  [WARNING] Could not parse date '{start_date}': {e}")
-                    continue
-
-                if not campaign_date:
-                    print(f"  [WARNING] Failed to parse date: {start_date}")
-                    continue
-
-                if idx == 0:
-                    print(f"  [DEBUG] Parsed campaign_date: {campaign_date}")
-
-                # Don't filter by date range - include ALL campaigns and group by month
-                # The 12-month filtering will happen when we store metrics
-                month_key = (campaign_date.year, campaign_date.month)
-
-                if month_key not in campaigns_by_month:
-                    campaigns_by_month[month_key] = []
-
-                campaigns_by_month[month_key].append(campaign)
-
-                if idx < 3:
-                    print(f"  [DEBUG] Added campaign '{campaign.get('name')}' to month {month_key}")
-            
-            print(f"  Campaigns span {len(campaigns_by_month)} months: {sorted(campaigns_by_month.keys())}")
-
-            # Filter to only months within our 12-month window
-            filtered_campaigns = {}
-            for month_key, month_campaigns in campaigns_by_month.items():
-                year, month = month_key
-                month_date = datetime(year, month, 1)
-
-                # Check if this month is within our 12-month window
-                if start_month <= month_date <= end_month:
-                    filtered_campaigns[month_key] = month_campaigns
-                else:
-                    print(f"  [DEBUG] Skipping month {year}-{month:02d} (outside 12-month window)")
-
-            print(f"  Processing {len(filtered_campaigns)} months within date range")
-
-            # Now get analytics for each campaign and aggregate by month
-            for (year, month), month_campaigns in filtered_campaigns.items():
-                print(f"  Processing {year}-{month:02d}: {len(month_campaigns)} campaigns...")
-
-                # Aggregate metrics for this month
-                total_sent = 0
-                total_delivered = 0
-                total_opened = 0
-                total_clicked = 0
-                total_replied = 0
-                total_bounced = 0
-                total_unsubscribed = 0
+            while current_month <= end_month:
+                year = current_month.year
+                month = current_month.month
 
                 # Calculate date range for this month
                 month_start = datetime(year, month, 1)
@@ -589,67 +498,30 @@ class DataCollector:
                 else:
                     month_end = datetime(year, month + 1, 1) - timedelta(days=1)
 
-                # Get campaign IDs for bulk fetch
-                campaign_ids = [c.get('id') for c in month_campaigns if c.get('id')]
+                print(f"  Processing {year}-{month:02d}...")
 
-                if not campaign_ids:
-                    continue
+                # Fetch aggregate analytics for this month (1 API call for all campaigns)
+                analytics = fetcher.get_aggregate_analytics(
+                    start_date=month_start.strftime('%Y-%m-%d'),
+                    end_date=month_end.strftime('%Y-%m-%d'),
+                    debug=False
+                )
 
-                # Fetch analytics for multiple campaigns at once (more efficient)
-                if len(campaign_ids) > 1:
-                    analytics_data = fetcher.get_multiple_campaigns_analytics(
-                        campaign_ids,
-                        start_date=month_start.strftime('%Y-%m-%d'),
-                        end_date=month_end.strftime('%Y-%m-%d'),
-                        debug=False
-                    )
-
-                    # Aggregate from bulk response
-                    if isinstance(analytics_data, dict):
-                        for campaign_id, analytics in analytics_data.items():
-                            if analytics:
-                                total_sent += analytics.get('emails_sent_count', 0)
-                                total_delivered += analytics.get('contacted_count', 0)
-                                total_opened += analytics.get('open_count_unique', 0)
-                                total_clicked += analytics.get('link_click_count_unique', 0)
-                                total_replied += analytics.get('reply_count_unique', 0)
-                                total_bounced += analytics.get('bounced_count', 0)
-                                total_unsubscribed += analytics.get('unsubscribed_count', 0)
-                else:
-                    # Single campaign - use individual fetch
-                    campaign_id = campaign_ids[0]
-                    analytics = fetcher.get_campaign_analytics(
-                        campaign_id,
-                        start_date=month_start.strftime('%Y-%m-%d'),
-                        end_date=month_end.strftime('%Y-%m-%d'),
-                        debug=False
-                    )
-
-                    if analytics:
-                        total_sent += analytics.get('emails_sent_count', 0)
-                        total_delivered += analytics.get('contacted_count', 0)
-                        total_opened += analytics.get('open_count_unique', 0)
-                        total_clicked += analytics.get('link_click_count_unique', 0)
-                        total_replied += analytics.get('reply_count_unique', 0)
-                        total_bounced += analytics.get('bounced_count', 0)
-                        total_unsubscribed += analytics.get('unsubscribed_count', 0)
+                # Extract metrics from aggregate response
+                total_sent = analytics.get('emails_sent_count', 0)
+                total_delivered = analytics.get('contacted_count', 0)
+                total_opened = analytics.get('open_count_unique', 0)
+                total_clicked = analytics.get('link_click_count_unique', 0)
+                total_replied = analytics.get('reply_count_unique', 0)
+                total_bounced = analytics.get('bounced_count', 0)
+                total_unsubscribed = analytics.get('unsubscribed_count', 0)
                 
-                # Calculate rates
-                delivery_rate = (total_delivered / total_sent * 100) if total_sent > 0 else 0
-                open_rate = (total_opened / total_delivered * 100) if total_delivered > 0 else 0
-                click_rate = (total_clicked / total_delivered * 100) if total_delivered > 0 else 0
-                reply_rate = (total_replied / total_delivered * 100) if total_delivered > 0 else 0
-                unsubscribe_rate = (total_unsubscribed / total_delivered * 100) if total_delivered > 0 else 0
+                # Calculate deliverability score
                 deliverability_score = (total_delivered / total_sent * 100) if total_sent > 0 else 0
-                
+
                 # Calculate days in month
-                if month == 12:
-                    next_month = datetime(year + 1, 1, 1)
-                else:
-                    next_month = datetime(year, month + 1, 1)
-                month_start = datetime(year, month, 1)
-                days = (next_month - month_start).days
-                
+                days = (month_end - month_start).days + 1
+
                 # Store metrics
                 self._store_metric('email', 'awareness', 'Emails Sent',
                                   total_sent, 'emails_sent', days, year, month)
@@ -669,8 +541,16 @@ class DataCollector:
 
                 self._store_metric('email', 'quality', 'Deliverability Score',
                                   deliverability_score, 'deliverability_score', days, year, month)
-            
-            print(f"  ✓ Stored {len(campaigns_by_month)} months of email data")
+
+                months_processed += 1
+
+                # Move to next month
+                if month == 12:
+                    current_month = datetime(year + 1, 1, 1)
+                else:
+                    current_month = datetime(year, month + 1, 1)
+
+            print(f"  ✓ Stored {months_processed} months of email data")
             
         except Exception as e:
             print(f"  [ERROR] Email bulk collection failed: {e}")
@@ -830,8 +710,8 @@ class DataCollector:
                 self._store_metric('social_media', 'engagement', 'Reactions',
                                   data.get('reactions', 0), 'reactions', days, year, month)
 
-                # RESPONSE: Post comments (Facebook)
-                self._store_metric('social_media', 'response', 'Comments',
+                # CONVERSION: Post comments (Facebook) - interactions that lead to engagement
+                self._store_metric('social_media', 'conversion', 'Comments',
                                   data.get('comments', 0), 'comments', days, year, month)
 
                 # ADVOCACY: Post shares (Facebook)
