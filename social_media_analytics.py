@@ -527,21 +527,24 @@ def get_facebook_posts_engagement(page_id, page_token, days_back=365):
     # Get all posts in the date range
     url = f"https://graph.facebook.com/{API_VERSION}/{page_id}/posts"
 
-    # Build full URL with params manually to ensure proper encoding
-    params_str = (
-        f"fields=id,created_time,message,reactions.summary(true),comments.summary(true),shares"
-        f"&since={start_date.strftime('%Y-%m-%d')}"
-        f"&until={end_date.strftime('%Y-%m-%d')}"
-        f"&limit=100"
-        f"&access_token={page_token}"
-    )
+    # Use Bearer token authentication in headers
+    headers = {
+        'Authorization': f'Bearer {page_token}'
+    }
+
+    params = {
+        'fields': 'id,created_time,message,reactions.summary(true),comments.summary(true),shares',
+        'since': start_date.strftime('%Y-%m-%d'),
+        'until': end_date.strftime('%Y-%m-%d'),
+        'limit': 100
+    }
 
     monthly_data = {}
     posts_fetched = 0
 
     try:
-        # First request with manually built query string
-        response = requests.get(f"{url}?{params_str}", timeout=30)
+        # First request with Bearer token authentication
+        response = requests.get(url, headers=headers, params=params, timeout=30)
         response.raise_for_status()
         data = response.json()
 
@@ -579,7 +582,8 @@ def get_facebook_posts_engagement(page_id, page_token, days_back=365):
         # Check for next page and continue pagination
         while data.get('paging', {}).get('next'):
             next_url = data['paging']['next']
-            response = requests.get(next_url, timeout=30)
+            # Use Bearer token for pagination requests too
+            response = requests.get(next_url, headers=headers, timeout=30)
             response.raise_for_status()
             data = response.json()
 
@@ -642,6 +646,11 @@ def get_instagram_account_insights(instagram_id, page_token, days_back=7):
 
     url = f"https://graph.facebook.com/{API_VERSION}/{instagram_id}/insights"
 
+    # Use Bearer token authentication in headers
+    headers = {
+        'Authorization': f'Bearer {page_token}'
+    }
+
     # Supported metrics only (deprecated metrics removed Jan 2025)
     # impressions is NOT supported - using accounts_engaged instead
     daily_metrics = ['reach', 'accounts_engaged']
@@ -665,10 +674,9 @@ def get_instagram_account_insights(instagram_id, page_token, days_back=7):
                     'metric': metric,
                     'period': 'day',
                     'since': current_chunk_start.strftime('%Y-%m-%d'),
-                    'until': current_chunk_end.strftime('%Y-%m-%d'),
-                    'access_token': page_token
+                    'until': current_chunk_end.strftime('%Y-%m-%d')
                 }
-                response = requests.get(url, params=params, timeout=30)
+                response = requests.get(url, headers=headers, params=params, timeout=30)
                 response.raise_for_status()
                 data = response.json().get('data', [])
                 if data:
@@ -689,10 +697,9 @@ def get_instagram_account_insights(instagram_id, page_token, days_back=7):
     try:
         params = {
             'metric': 'follower_count',
-            'period': 'day',
-            'access_token': page_token
+            'period': 'day'
         }
-        response = requests.get(url, params=params, timeout=30)
+        response = requests.get(url, headers=headers, params=params, timeout=30)
         response.raise_for_status()
         data = response.json().get('data', [])
         if data:
