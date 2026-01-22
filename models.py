@@ -398,11 +398,11 @@ INDUSTRY_BENCHMARKS = {
             'advocacy': {'referrals': 5, 'social_shares': 10}
         },
         'email': {
-            'awareness': {'emails_sent': 1000, 'delivery_rate': 95},
-            'engagement': {'open_rate': 20, 'click_rate': 2.5},
-            'response': {'reply_rate': 5, 'lead_conversion_rate': 2},
-            'retention': {'unsubscribe_rate': 0.5, 'active_list_size': 950},
-            'quality': {'bounce_rate': 2, 'deliverability_score': 95}
+            'awareness': {'emails_sent': 1000, 'emails_delivered': 950},
+            'engagement': {'email_opens': 200, 'email_clicks': 25},
+            'response': {'email_replies': 50},
+            'retention': {'unsubscribes': 5},
+            'quality': {'deliverability_score': 95}
         }
     },
     'dental': {
@@ -421,11 +421,11 @@ INDUSTRY_BENCHMARKS = {
             'advocacy': {'referrals': 8, 'social_shares': 12}
         },
         'email': {
-            'awareness': {'emails_sent': 800, 'delivery_rate': 96},
-            'engagement': {'open_rate': 22, 'click_rate': 3.0},
-            'response': {'reply_rate': 6, 'lead_conversion_rate': 2.5},
-            'retention': {'unsubscribe_rate': 0.4, 'active_list_size': 750},
-            'quality': {'bounce_rate': 1.5, 'deliverability_score': 96}
+            'awareness': {'emails_sent': 800, 'emails_delivered': 768},
+            'engagement': {'email_opens': 176, 'email_clicks': 24},
+            'response': {'email_replies': 48},
+            'retention': {'unsubscribes': 3},
+            'quality': {'deliverability_score': 96}
         }
     },
     'medical': {
@@ -444,11 +444,11 @@ INDUSTRY_BENCHMARKS = {
             'advocacy': {'referrals': 6, 'social_shares': 8}
         },
         'email': {
-            'awareness': {'emails_sent': 900, 'delivery_rate': 95},
-            'engagement': {'open_rate': 21, 'click_rate': 2.8},
-            'response': {'reply_rate': 5.5, 'lead_conversion_rate': 2.2},
-            'retention': {'unsubscribe_rate': 0.5, 'active_list_size': 850},
-            'quality': {'bounce_rate': 2, 'deliverability_score': 95}
+            'awareness': {'emails_sent': 900, 'emails_delivered': 855},
+            'engagement': {'email_opens': 189, 'email_clicks': 25},
+            'response': {'email_replies': 50},
+            'retention': {'unsubscribes': 5},
+            'quality': {'deliverability_score': 95}
         }
     },
     'default': {
@@ -467,11 +467,11 @@ INDUSTRY_BENCHMARKS = {
             'advocacy': {'referrals': 5, 'social_shares': 10}
         },
         'email': {
-            'awareness': {'emails_sent': 1000, 'delivery_rate': 95},
-            'engagement': {'open_rate': 20, 'click_rate': 2.5},
-            'response': {'reply_rate': 5, 'lead_conversion_rate': 2},
-            'retention': {'unsubscribe_rate': 0.5, 'active_list_size': 950},
-            'quality': {'bounce_rate': 2, 'deliverability_score': 95}
+            'awareness': {'emails_sent': 1000, 'emails_delivered': 950},
+            'engagement': {'email_opens': 200, 'email_clicks': 25},
+            'response': {'email_replies': 50},
+            'retention': {'unsubscribes': 5},
+            'quality': {'deliverability_score': 95}
         }
     }
 }
