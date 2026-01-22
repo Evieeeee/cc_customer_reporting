@@ -526,27 +526,29 @@ def get_facebook_posts_engagement(page_id, page_token, days_back=365):
 
     # Get all posts in the date range
     url = f"https://graph.facebook.com/{API_VERSION}/{page_id}/posts"
-    params = {
-        'fields': 'id,created_time,message,reactions.summary(true),comments.summary(true),shares',
-        'since': start_date.strftime('%Y-%m-%d'),  # Use YYYY-MM-DD format, not Unix timestamp
-        'until': end_date.strftime('%Y-%m-%d'),    # Use YYYY-MM-DD format, not Unix timestamp
-        'limit': 100,
-        'access_token': page_token
-    }
+
+    # Build full URL with params manually to ensure proper encoding
+    params_str = (
+        f"fields=id,created_time,message,reactions.summary(true),comments.summary(true),shares"
+        f"&since={start_date.strftime('%Y-%m-%d')}"
+        f"&until={end_date.strftime('%Y-%m-%d')}"
+        f"&limit=100"
+        f"&access_token={page_token}"
+    )
 
     monthly_data = {}
     posts_fetched = 0
 
     try:
-        while url:
-            response = requests.get(url, params=params, timeout=30)
-            response.raise_for_status()
-            data = response.json()
+        # First request with manually built query string
+        response = requests.get(f"{url}?{params_str}", timeout=30)
+        response.raise_for_status()
+        data = response.json()
 
-            posts = data.get('data', [])
-            posts_fetched += len(posts)
+        posts = data.get('data', [])
+        posts_fetched += len(posts)
 
-            for post in posts:
+        for post in posts:
                 # Parse post date
                 created_time = post.get('created_time')
                 if not created_time:
@@ -574,9 +576,40 @@ def get_facebook_posts_engagement(page_id, page_token, days_back=365):
                 monthly_data[month_key]['shares'] += shares_count
                 monthly_data[month_key]['posts_count'] += 1
 
-            # Check for next page
-            url = data.get('paging', {}).get('next')
-            params = {}  # Next URL has params already
+        # Check for next page and continue pagination
+        while data.get('paging', {}).get('next'):
+            next_url = data['paging']['next']
+            response = requests.get(next_url, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            posts = data.get('data', [])
+            posts_fetched += len(posts)
+
+            for post in posts:
+                created_time = post.get('created_time')
+                if not created_time:
+                    continue
+
+                post_date = datetime.strptime(created_time[:10], '%Y-%m-%d')
+                month_key = f"{post_date.year}-{post_date.month:02d}"
+
+                if month_key not in monthly_data:
+                    monthly_data[month_key] = {
+                        'reactions': 0,
+                        'comments': 0,
+                        'shares': 0,
+                        'posts_count': 0
+                    }
+
+                reactions_data = post.get('reactions', {}).get('summary', {})
+                comments_data = post.get('comments', {}).get('summary', {})
+                shares_count = post.get('shares', {}).get('count', 0)
+
+                monthly_data[month_key]['reactions'] += reactions_data.get('total_count', 0)
+                monthly_data[month_key]['comments'] += comments_data.get('total_count', 0)
+                monthly_data[month_key]['shares'] += shares_count
+                monthly_data[month_key]['posts_count'] += 1
 
         print(f"  [Facebook] ✓ Processed {posts_fetched} posts across {len(monthly_data)} months")
 
@@ -593,9 +626,10 @@ def get_instagram_account_insights(instagram_id, page_token, days_back=7):
 
     DEPRECATED METRICS (removed as of Jan 2025):
     - profile_views, website_clicks, phone_call_clicks, text_message_clicks
+    - impressions (not supported - replaced with accounts_engaged)
 
     SUPPORTED METRICS:
-    - reach, impressions, follower_count
+    - reach, accounts_engaged, follower_count
 
     Args:
         instagram_id: Instagram Business Account ID
@@ -609,7 +643,8 @@ def get_instagram_account_insights(instagram_id, page_token, days_back=7):
     url = f"https://graph.facebook.com/{API_VERSION}/{instagram_id}/insights"
 
     # Supported metrics only (deprecated metrics removed Jan 2025)
-    daily_metrics = ['reach', 'impressions']
+    # impressions is NOT supported - using accounts_engaged instead
+    daily_metrics = ['reach', 'accounts_engaged']
 
     # Calculate how many 30-day chunks we need
     end_date = datetime.now()

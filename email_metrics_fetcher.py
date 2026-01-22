@@ -111,6 +111,23 @@ class InstantlyFetcher:
                 print(f"[DEBUG] Response type: {type(data)}")
                 if isinstance(data, dict):
                     print(f"[DEBUG] Response keys: {list(data.keys())}")
+                elif isinstance(data, list):
+                    print(f"[DEBUG] Response is list with {len(data)} items")
+
+            # Handle list response - aggregate all items
+            if isinstance(data, list):
+                if not data:
+                    return {}
+                # If it's a list of campaign analytics, sum them up
+                aggregated = {}
+                for item in data:
+                    if isinstance(item, dict):
+                        for key, value in item.items():
+                            if isinstance(value, (int, float)):
+                                aggregated[key] = aggregated.get(key, 0) + value
+                            elif key not in aggregated:
+                                aggregated[key] = value
+                return aggregated
 
             return data
 
