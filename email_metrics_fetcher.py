@@ -77,6 +77,50 @@ class InstantlyFetcher:
             traceback.print_exc()
             return []
     
+    def get_aggregate_analytics(self, start_date: str, end_date: str, debug: bool = False) -> Dict:
+        """
+        Get aggregate analytics for ALL campaigns in a date range
+        This is much more efficient than fetching per-campaign data
+
+        Args:
+            start_date: Start date in YYYY-MM-DD format
+            end_date: End date in YYYY-MM-DD format
+            debug: Enable debug logging
+
+        Returns: Dictionary with aggregated metrics across all campaigns
+        """
+        endpoint = f"{self.base_url}/campaigns/analytics"
+        params = {
+            'start_date': start_date,
+            'end_date': end_date,
+            'exclude_total_leads_count': 'true'
+        }
+
+        try:
+            if debug:
+                print(f"[DEBUG] Fetching aggregate analytics")
+                print(f"[DEBUG] Endpoint: {endpoint}")
+                print(f"[DEBUG] Params: {params}")
+
+            response = requests.get(endpoint, headers=self.headers, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            if debug:
+                print(f"[DEBUG] Success!")
+                print(f"[DEBUG] Response type: {type(data)}")
+                if isinstance(data, dict):
+                    print(f"[DEBUG] Response keys: {list(data.keys())}")
+
+            return data
+
+        except Exception as e:
+            print(f"[ERROR] Failed to fetch aggregate analytics: {e}")
+            if debug:
+                import traceback
+                traceback.print_exc()
+            return {}
+
     def get_campaign_analytics(self, campaign_id: str, start_date: str = None, end_date: str = None, debug: bool = False) -> Dict:
         """Get detailed analytics for a specific campaign"""
         from datetime import datetime, timedelta

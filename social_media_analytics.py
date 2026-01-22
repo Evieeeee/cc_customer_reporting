@@ -528,8 +528,8 @@ def get_facebook_posts_engagement(page_id, page_token, days_back=365):
     url = f"https://graph.facebook.com/{API_VERSION}/{page_id}/posts"
     params = {
         'fields': 'id,created_time,message,reactions.summary(true),comments.summary(true),shares',
-        'since': int(start_date.timestamp()),
-        'until': int(end_date.timestamp()),
+        'since': start_date.strftime('%Y-%m-%d'),  # Use YYYY-MM-DD format, not Unix timestamp
+        'until': end_date.strftime('%Y-%m-%d'),    # Use YYYY-MM-DD format, not Unix timestamp
         'limit': 100,
         'access_token': page_token
     }
