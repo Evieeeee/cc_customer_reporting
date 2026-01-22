@@ -31,6 +31,7 @@ Improvement: Was 36+ calls (12 months × 3 sources), now ~15 calls with full his
 
 import sys
 import os
+import json
 from datetime import datetime, timedelta
 from typing import Dict, List
 from dateutil.relativedelta import relativedelta
@@ -309,12 +310,7 @@ class DataCollector:
     
     def collect_historical_data_optimized(self, status_callback=None):
         """
-        Collect 12 months of historical data with OPTIMIZED bulk API calls
-        
-        NEW APPROACH:
-        - GA4: 1 API call for all 12 months (bulk endpoint)
-        - Email: 1 API call for all campaigns (group by start_date)
-        - Social: 1 API call with period='day' (parse daily to monthly)
+        Collect 12 months of historical data with OPTIMIZED bulk API call
         
         Total: 3 API calls instead of 36 (12 months × 3 sources)
         """
@@ -587,6 +583,7 @@ class DataCollector:
             # For each account, get data with daily granularity
             for account in accounts:
                 print(f"  Processing account: {account['page_name']}")
+                print(f'Triaging account: {json.dumps(account, indent=2)}')
                 
                 # Get Facebook post engagement data
                 try:
@@ -620,9 +617,10 @@ class DataCollector:
                         monthly_data[month_key]['followers'] += account.get('fan_count', 0)
 
                 except Exception as e:
-                    print(f"    [ERROR] Facebook failed: {e}")
+                    print(f"    [ERROR] Facebook failed for account {account.get('page_name', 'unknown')}: {e}")
                     import traceback
                     traceback.print_exc()
+                    print(f"    Account details: page_id={account.get('page_id')}, has_token={bool(account.get('page_token'))}")
                 
                 # Get Instagram insights
                 if account.get('instagram_id'):
@@ -654,8 +652,8 @@ class DataCollector:
                                             }
 
                                         monthly_data[month_key]['reach'] += value
-                                    except:
-                                        pass
+                                    except Exception as parse_err:
+                                        print(f"      [WARNING] Failed to parse reach date '{date_str}': {parse_err}")
 
                         # Parse impressions data (not used in final metrics, but good for debugging)
                         if 'impressions' in ig_insights:
@@ -679,15 +677,18 @@ class DataCollector:
 
                                         # Store impressions for potential future use (not currently displayed)
                                         # monthly_data[month_key]['impressions'] = value
-                                    except:
-                                        pass
+                                    except Exception as parse_err:
+                                        print(f"      [WARNING] Failed to parse impressions date '{date_str}': {parse_err}")
 
                         # Add Instagram follower count
                         for month_key in monthly_data:
                             monthly_data[month_key]['followers'] += account.get('followers_count', 0)
                         
                     except Exception as e:
-                        print(f"    [ERROR] Instagram failed: {e}")
+                        print(f"    [ERROR] Instagram failed for account {account.get('page_name', 'unknown')}: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        print(f"    Account details: instagram_id={account.get('instagram_id')}, has_token={bool(account.get('page_token'))}")
             
             # Store monthly aggregated data
             for (year, month), data in monthly_data.items():

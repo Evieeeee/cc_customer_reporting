@@ -198,6 +198,18 @@ def get_instagram_insights_bulk(instagram_id, page_token, days_back=365):
 
         try:
             response = requests.get(insights_url, params=params, timeout=30)
+
+            # Check status and provide detailed error info if failed
+            if response.status_code != 200:
+                print(f"    [API ERROR] Instagram API returned {response.status_code}")
+                print(f"    URL: {insights_url}")
+                print(f"    Params: {params}")
+                try:
+                    error_data = response.json()
+                    print(f"    Response body: {json.dumps(error_data, indent=2)}")
+                except:
+                    print(f"    Response text: {response.text}")
+
             response.raise_for_status()
             data = response.json().get('data', [])
 
@@ -229,7 +241,10 @@ def get_instagram_insights_bulk(instagram_id, page_token, days_back=365):
                         monthly_data[month_key][metric_name] += value
 
         except Exception as e:
-            print(f"    Warning: Failed chunk {current_chunk_start.strftime('%Y-%m-%d')}: {e}")
+            print(f"    [ERROR] Failed chunk {current_chunk_start.strftime('%Y-%m-%d')} to {current_chunk_end.strftime('%Y-%m-%d')}: {e}")
+            print(f"    Instagram ID: {instagram_id}, Token available: {bool(page_token)}")
+            import traceback
+            traceback.print_exc()
 
         # Move to next chunk
         current_chunk_end = current_chunk_start - timedelta(days=1)
@@ -542,6 +557,18 @@ def get_facebook_posts_engagement(page_id, page_token, days_back=365):
     try:
         # First request
         response = requests.get(url, params=params, timeout=30)
+
+        # Check status and provide detailed error info if failed
+        if response.status_code != 200:
+            print(f"  [API ERROR] Facebook API returned {response.status_code}")
+            print(f"  URL: {url}")
+            print(f"  Params: {params}")
+            try:
+                error_data = response.json()
+                print(f"  Response body: {json.dumps(error_data, indent=2)}")
+            except:
+                print(f"  Response text: {response.text}")
+
         response.raise_for_status()
         data = response.json()
 
@@ -616,6 +643,9 @@ def get_facebook_posts_engagement(page_id, page_token, days_back=365):
 
     except requests.exceptions.RequestException as e:
         print(f"  [Facebook] Error fetching posts: {e}")
+        print(f"  Page ID: {page_id}, Token available: {bool(page_token)}")
+        import traceback
+        traceback.print_exc()
 
     return {'monthly_data': monthly_data}
 

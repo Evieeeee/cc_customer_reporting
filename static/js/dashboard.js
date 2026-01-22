@@ -516,11 +516,11 @@ function createKPICard(medium, journeyStage, kpiName, kpiValue, benchmarkValue, 
     
     if (kpiValue > benchmarkValue * 1.1) {
         performance = 'above';
-        icon = 'â–²';
+        icon = '⇈';
         text = `${Math.round((kpiValue / benchmarkValue - 1) * 100)}% Above Benchmark`;
     } else if (kpiValue < benchmarkValue * 0.9) {
         performance = 'below';
-        icon = 'â–¼';
+        icon = '⇊';
         text = `${Math.round((1 - kpiValue / benchmarkValue) * 100)}% Below Benchmark`;
     }
     
