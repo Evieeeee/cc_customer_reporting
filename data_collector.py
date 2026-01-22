@@ -47,7 +47,7 @@ from models import (
 from email_metrics_fetcher import InstantlyFetcher, KlaviyoFetcher
 from social_media_analytics import (
     get_all_pages_and_instagram_accounts,
-    get_facebook_page_insights,
+    get_facebook_posts_engagement,
     get_instagram_account_insights,
     get_instagram_media_insights
 )
@@ -710,8 +710,6 @@ class DataCollector:
                 
                 # Get Facebook post engagement data
                 try:
-                    from social_media_analytics import get_facebook_posts_engagement
-
                     fb_data = get_facebook_posts_engagement(
                         account['page_id'],
                         account['page_token'],
