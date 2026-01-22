@@ -768,17 +768,18 @@ class DataCollector:
 
                                         if month_key not in monthly_data:
                                             monthly_data[month_key] = {
-                                                'views': 0,
-                                                'engagement': 0,
-                                                'reach': 0,
-                                                'followers': 0
+                                                'reactions': 0,   # Facebook will populate
+                                                'comments': 0,    # Facebook will populate
+                                                'shares': 0,      # Facebook will populate
+                                                'reach': 0,       # Instagram reach
+                                                'followers': 0    # Both platforms
                                             }
 
                                         monthly_data[month_key]['reach'] += value
                                     except:
                                         pass
 
-                        # Parse impressions data
+                        # Parse impressions data (not used in final metrics, but good for debugging)
                         if 'impressions' in ig_insights:
                             for value_entry in ig_insights['impressions']:
                                 date_str = value_entry.get('end_time', '')
@@ -791,17 +792,19 @@ class DataCollector:
 
                                         if month_key not in monthly_data:
                                             monthly_data[month_key] = {
-                                                'views': 0,
-                                                'engagement': 0,
+                                                'reactions': 0,
+                                                'comments': 0,
+                                                'shares': 0,
                                                 'reach': 0,
                                                 'followers': 0
                                             }
 
-                                        monthly_data[month_key]['views'] += value  # Instagram impressions count as views
+                                        # Store impressions for potential future use (not currently displayed)
+                                        # monthly_data[month_key]['impressions'] = value
                                     except:
                                         pass
 
-                        # Add follower count
+                        # Add Instagram follower count
                         for month_key in monthly_data:
                             monthly_data[month_key]['followers'] += account.get('followers_count', 0)
                         
