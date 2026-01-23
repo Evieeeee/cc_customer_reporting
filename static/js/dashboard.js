@@ -552,20 +552,19 @@ function createKPICard(medium, journeyStage, kpiName, kpiValue, benchmarkValue, 
 }
 
 function formatKPIValue(value, kpiName) {
-    // Check if it's a percentage metric
-    if (kpiName.toLowerCase().includes('rate') || 
-        kpiName.toLowerCase().includes('percentage') ||
-        kpiName.toLowerCase().includes('score')) {
+    // Only format Deliverability Score as percentage for email metrics
+    // All other email metrics are now counts, not rates
+    if (kpiName.toLowerCase() === 'deliverability score') {
         return value.toFixed(1) + '%';
     }
-    
+
     // Format large numbers
     if (value >= 1000000) {
         return (value / 1000000).toFixed(1) + 'M';
     } else if (value >= 1000) {
         return (value / 1000).toFixed(1) + 'K';
     }
-    
+
     return Math.round(value).toLocaleString();
 }
 
@@ -861,7 +860,7 @@ async function discoverPages() {
     
     // Show loading
     discoverBtn.disabled = true;
-    discoverBtn.textContent = 'ðŸ” Discovering...';
+    discoverBtn.textContent = '🔍 Discovering...';
     availablePagesContainer.innerHTML = `
         <div class="loading-indicator">
             <div class="loading-spinner-small"></div>
@@ -905,7 +904,7 @@ async function discoverPages() {
         showToast('Failed to discover pages', 'error');
     } finally {
         discoverBtn.disabled = false;
-        discoverBtn.textContent = 'ðŸ” Discover Available Pages';
+        discoverBtn.textContent = '🔍 Discover Available Pages';
     }
 }
 

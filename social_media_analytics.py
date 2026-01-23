@@ -301,11 +301,26 @@ def get_instagram_media_insights_bulk(instagram_id, page_token, days_back=365):
     
     try:
         media_response = requests.get(media_url, params=media_params, timeout=30)
+
+        # Check status and provide detailed error info if failed
+        if media_response.status_code != 200:
+            print(f"  [API ERROR] Instagram Media API returned {media_response.status_code}")
+            print(f"  URL: {media_url}")
+            print(f"  Instagram ID: {instagram_id}")
+            print(f"  Params: since={since_timestamp} ({start_date.strftime('%Y-%m-%d')})")
+            try:
+                error_data = media_response.json()
+                print(f"  Response body: {json.dumps(error_data, indent=2)}")
+            except:
+                print(f"  Response text: {media_response.text}")
+
         media_response.raise_for_status()
         media_items = media_response.json().get('data', [])
         print(f"  [Instagram] Found {len(media_items)} media items")
     except Exception as e:
-        print(f"  [Instagram] Failed to get media: {e}")
+        print(f"  [ERROR] Failed to get Instagram media: {e}")
+        import traceback
+        traceback.print_exc()
         return {}
     
     monthly_data = {}
@@ -337,19 +352,28 @@ def get_instagram_media_insights_bulk(instagram_id, page_token, days_back=365):
             }
             
             insights_response = requests.get(insights_url, params=insights_params, timeout=10)
-            
+
             if insights_response.status_code == 200:
                 insights_data = insights_response.json().get('data', [])
-                
+
                 for insight in insights_data:
                     metric_name = insight.get('name')
                     values = insight.get('values', [{}])
                     value = values[0].get('value', 0) if values else 0
-                    
+
                     if metric_name in monthly_data[month_key]:
                         monthly_data[month_key][metric_name] += value
-        
+            else:
+                print(f"    [API ERROR] Instagram Media Insights returned {insights_response.status_code} for media {media_id}")
+                print(f"    URL: {insights_url}")
+                try:
+                    error_data = insights_response.json()
+                    print(f"    Response body: {json.dumps(error_data, indent=2)}")
+                except:
+                    print(f"    Response text: {insights_response.text}")
+
         except Exception as e:
+            print(f"    [WARNING] Failed to process media {media.get('id', 'unknown')}: {e}")
             continue
     
     print(f"  [Instagram] ✓ Collected media data for {len(monthly_data)} months")
@@ -469,10 +493,23 @@ def get_all_pages_and_instagram_accounts(system_token):
 
     try:
         response = requests.get(url, params=params, timeout=30)
+
+        # Check status and provide detailed error info if failed
+        if response.status_code != 200:
+            print(f"[API ERROR] Facebook Pages API returned {response.status_code}")
+            print(f"URL: {url}")
+            try:
+                error_data = response.json()
+                print(f"Response body: {json.dumps(error_data, indent=2)}")
+            except:
+                print(f"Response text: {response.text}")
+
         response.raise_for_status()
         pages_data = response.json().get('data', [])
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching pages: {e}")
+        print(f"[ERROR] Failed to fetch Facebook pages: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
     accounts = []
@@ -490,13 +527,26 @@ def get_all_pages_and_instagram_accounts(system_token):
 
         try:
             ig_response = requests.get(ig_url, params=ig_params, timeout=30)
+
+            # Check status and provide detailed error info if failed
+            if ig_response.status_code != 200:
+                print(f"  [API ERROR] Facebook Page Details API returned {ig_response.status_code} for page '{page_name}'")
+                print(f"  URL: {ig_url}")
+                print(f"  Page ID: {page_id}")
+                try:
+                    error_data = ig_response.json()
+                    print(f"  Response body: {json.dumps(error_data, indent=2)}")
+                except:
+                    print(f"  Response text: {ig_response.text}")
+
             ig_response.raise_for_status()
             ig_data = ig_response.json()
 
             instagram_id = ig_data.get('instagram_business_account', {}).get('id')
             fan_count = ig_data.get('fan_count', 0)
             followers_count = ig_data.get('followers_count', 0)
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
+            print(f"  [WARNING] Failed to fetch Instagram account for page '{page_name}': {e}")
             instagram_id = None
             fan_count = 0
             followers_count = 0
@@ -700,13 +750,28 @@ def get_instagram_account_insights(instagram_id, page_token, days_back=7):
                     'access_token': page_token
                 }
                 response = requests.get(url, params=params, timeout=30)
+
+                # Check status and provide detailed error info if failed
+                if response.status_code != 200:
+                    print(f"      [API ERROR] Instagram API returned {response.status_code} for metric '{metric}'")
+                    print(f"      URL: {url}")
+                    print(f"      Params: metric={metric}, period=day, since={current_chunk_start.strftime('%Y-%m-%d')}, until={current_chunk_end.strftime('%Y-%m-%d')}")
+                    print(f"      Instagram ID: {instagram_id}")
+                    try:
+                        error_data = response.json()
+                        print(f"      Response body: {json.dumps(error_data, indent=2)}")
+                    except:
+                        print(f"      Response text: {response.text}")
+
                 response.raise_for_status()
                 data = response.json().get('data', [])
                 if data:
                     values = data[0].get('values', [])
                     all_values[metric].extend(values)
             except requests.exceptions.RequestException as e:
-                print(f"      Warning: Failed to fetch {metric}: {e}")
+                print(f"      [ERROR] Failed to fetch Instagram metric '{metric}': {e}")
+                import traceback
+                traceback.print_exc()
 
         # Move to next chunk (go backwards in time)
         current_chunk_end = current_chunk_start - timedelta(days=1)
@@ -724,12 +789,26 @@ def get_instagram_account_insights(instagram_id, page_token, days_back=7):
             'access_token': page_token
         }
         response = requests.get(url, params=params, timeout=30)
+
+        # Check status and provide detailed error info if failed
+        if response.status_code != 200:
+            print(f"      [API ERROR] Instagram API returned {response.status_code} for follower_count")
+            print(f"      URL: {url}")
+            print(f"      Instagram ID: {instagram_id}")
+            try:
+                error_data = response.json()
+                print(f"      Response body: {json.dumps(error_data, indent=2)}")
+            except:
+                print(f"      Response text: {response.text}")
+
         response.raise_for_status()
         data = response.json().get('data', [])
         if data:
             insights['follower_count'] = data[0].get('values', [])
     except requests.exceptions.RequestException as e:
-        print(f"  Warning: Failed to fetch follower_count: {e}")
+        print(f"  [ERROR] Failed to fetch Instagram follower_count: {e}")
+        import traceback
+        traceback.print_exc()
 
     return insights
 
@@ -755,10 +834,24 @@ def get_instagram_media_insights(instagram_id, page_token, limit=20):
 
     try:
         media_response = requests.get(media_url, params=media_params, timeout=30)
+
+        # Check status and provide detailed error info if failed
+        if media_response.status_code != 200:
+            print(f"  [API ERROR] Instagram Media API returned {media_response.status_code}")
+            print(f"  URL: {media_url}")
+            print(f"  Instagram ID: {instagram_id}")
+            try:
+                error_data = media_response.json()
+                print(f"  Response body: {json.dumps(error_data, indent=2)}")
+            except:
+                print(f"  Response text: {media_response.text}")
+
         media_response.raise_for_status()
         media_list = media_response.json().get('data', [])
     except requests.exceptions.RequestException as e:
-        print(f"  Warning: Failed to fetch media: {e}")
+        print(f"  [ERROR] Failed to fetch Instagram media: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
     media_insights = []
@@ -782,12 +875,25 @@ def get_instagram_media_insights(instagram_id, page_token, limit=20):
             try:
                 params = {'metric': metric, 'access_token': page_token}
                 response = requests.get(insights_url, params=params, timeout=10)
+
+                # Check status and provide detailed error info if failed
+                if response.status_code != 200:
+                    print(f"    [API ERROR] Instagram Media Insights API returned {response.status_code} for metric '{metric}'")
+                    print(f"    URL: {insights_url}")
+                    print(f"    Media ID: {media_id}")
+                    try:
+                        error_data = response.json()
+                        print(f"    Response body: {json.dumps(error_data, indent=2)}")
+                    except:
+                        print(f"    Response text: {response.text}")
+
                 response.raise_for_status()
                 data = response.json().get('data', [])
                 if data:
                     values = data[0].get('values', [{}])
                     post_data['insights'][metric] = values[0].get('value') if values else 0
-            except requests.exceptions.RequestException:
+            except requests.exceptions.RequestException as e:
+                print(f"    [WARNING] Failed to fetch Instagram media metric '{metric}' for media {media_id}: {e}")
                 post_data['insights'][metric] = 0
 
         media_insights.append(post_data)
