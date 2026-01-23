@@ -177,6 +177,7 @@ def get_instagram_insights_bulk(instagram_id, page_token, days_back=365):
     insights_url = f"https://graph.facebook.com/{API_VERSION}/{instagram_id}/insights"
 
     # Supported metrics only (deprecated metrics removed)
+    # Note: impressions may require metric_type parameter similar to accounts_engaged
     metrics = 'reach,impressions'
 
     monthly_data = {}
@@ -193,7 +194,8 @@ def get_instagram_insights_bulk(instagram_id, page_token, days_back=365):
             'period': 'day',
             'access_token': page_token,
             'since': current_chunk_start.strftime('%Y-%m-%d'),
-            'until': current_chunk_end.strftime('%Y-%m-%d')
+            'until': current_chunk_end.strftime('%Y-%m-%d'),
+            'metric_type': 'total_value'  # Required for some metrics as of 2025
         }
 
         try:
@@ -514,9 +516,20 @@ def get_all_pages_and_instagram_accounts(system_token):
 
     accounts = []
     for page in pages_data:
-        page_id = page['id']
-        page_token = page['access_token']
-        page_name = page['name']
+        page_id = page.get('id')
+        page_token = page.get('access_token')
+        page_name = page.get('name')
+
+        # Validate we have required fields
+        if not page_id or not page_token or not page_name:
+            print(f"  [WARNING] Incomplete page data received: {page}")
+            continue
+
+        # Debug: Show token info (masked for security)
+        token_preview = page_token[:20] + '...' + page_token[-10:] if len(page_token) > 30 else 'TOKEN_TOO_SHORT'
+        print(f"  Page '{page_name}' (ID: {page_id})")
+        print(f"    Token preview: {token_preview}")
+        print(f"    Token type: {'Long-lived' if len(page_token) > 200 else 'Short-lived or System token'}")
 
         # Get Instagram account if linked
         ig_url = f"https://graph.facebook.com/{API_VERSION}/{page_id}"
@@ -570,6 +583,18 @@ def get_facebook_posts_engagement(page_id, page_token, days_back=365):
 
     2026 UPDATE: Page Insights heavily deprecated - using Posts for engagement
 
+    REQUIRED PERMISSIONS (System User Token must have these):
+    - pages_show_list: To list pages accessible by the app
+    - pages_read_engagement: To read posts, reactions, comments, shares
+    - pages_read_user_content: To read user-generated content on pages
+
+    IMPORTANT: The page_token passed to this function is obtained from
+    /me/accounts endpoint and inherits the permissions from the System User Token.
+    If you get permission errors, verify:
+    1. Your System User Token has the permissions listed above
+    2. The permissions are assigned in Meta Business Suite > Business Settings > System Users
+    3. The pages are connected to your Business Manager account
+
     Maps to journey stages:
     - Awareness: Post reach/views (from post insights if available)
     - Engagement: Total reactions across all posts
@@ -579,12 +604,17 @@ def get_facebook_posts_engagement(page_id, page_token, days_back=365):
 
     Args:
         page_id: Facebook page ID
-        page_token: Page access token
+        page_token: Page access token (from /me/accounts)
         days_back: Number of days of historical data
 
     Returns: Dictionary with monthly_data aggregated by month
     """
     print(f"  [Facebook] Fetching posts for last {days_back} days...")
+
+    # Debug: Verify we're using a page access token
+    token_preview = page_token[:20] + '...' + page_token[-10:] if len(page_token) > 30 else 'TOKEN_TOO_SHORT'
+    print(f"  Using token: {token_preview}")
+    print(f"  Page ID: {page_id}")
 
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days_back)
@@ -593,6 +623,7 @@ def get_facebook_posts_engagement(page_id, page_token, days_back=365):
     url = f"https://graph.facebook.com/{API_VERSION}/{page_id}/posts"
 
     # Use access_token as query parameter (matches Graph API Explorer)
+    # Required permissions: pages_read_engagement, pages_show_list
     params = {
         'fields': 'id,created_time,message,reactions.summary(true),comments.summary(true),shares',
         'since': start_date.strftime('%Y-%m-%d'),
@@ -612,10 +643,23 @@ def get_facebook_posts_engagement(page_id, page_token, days_back=365):
         if response.status_code != 200:
             print(f"  [API ERROR] Facebook API returned {response.status_code}")
             print(f"  URL: {url}")
-            print(f"  Params: {params}")
+            print(f"  Page ID: {page_id}")
+            print(f"  Token being used: {token_preview}")
             try:
                 error_data = response.json()
                 print(f"  Response body: {json.dumps(error_data, indent=2)}")
+                # Check for permission errors
+                if 'error' in error_data:
+                    error_obj = error_data['error']
+                    if error_obj.get('code') in [200, 10]:  # Permission errors
+                        print(f"\n  [PERMISSION ERROR] The page access token is missing required permissions!")
+                        print(f"  Required permissions: pages_read_engagement, pages_show_list")
+                        print(f"  Error message: {error_obj.get('message')}")
+                        print(f"\n  SOLUTION: Make sure your System User Token has these permissions:")
+                        print(f"    - pages_read_engagement")
+                        print(f"    - pages_show_list")
+                        print(f"    - pages_read_user_content")
+                        print(f"  The page tokens inherit permissions from the System User Token.\n")
             except:
                 print(f"  Response text: {response.text}")
 
@@ -749,6 +793,11 @@ def get_instagram_account_insights(instagram_id, page_token, days_back=7):
                     'until': current_chunk_end.strftime('%Y-%m-%d'),
                     'access_token': page_token
                 }
+
+                # accounts_engaged requires metric_type parameter as of 2025
+                if metric == 'accounts_engaged':
+                    params['metric_type'] = 'total_value'
+
                 response = requests.get(url, params=params, timeout=30)
 
                 # Check status and provide detailed error info if failed

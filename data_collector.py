@@ -503,6 +503,11 @@ class DataCollector:
                     debug=False
                 )
 
+                # Debug: Print what we got from the API
+                print(f"  API Response keys: {list(analytics.keys())}")
+                print(f"  emails_sent_count: {analytics.get('emails_sent_count', 'NOT FOUND')}")
+                print(f"  contacted_count: {analytics.get('contacted_count', 'NOT FOUND')}")
+
                 # Extract metrics from aggregate response
                 total_sent = analytics.get('emails_sent_count', 0)
                 total_delivered = analytics.get('contacted_count', 0)
@@ -511,7 +516,16 @@ class DataCollector:
                 total_replied = analytics.get('reply_count_unique', 0)
                 total_bounced = analytics.get('bounced_count', 0)
                 total_unsubscribed = analytics.get('unsubscribed_count', 0)
-                
+
+                # Debug: Print extracted values
+                print(f"  Extracted - Sent: {total_sent}, Delivered: {total_delivered}")
+
+                # VALIDATION: Check if values look suspicious (might be percentages instead of counts)
+                if 0 < total_sent <= 100 and total_sent == int(total_sent):
+                    print(f"  [WARNING] emails_sent value ({total_sent}) looks like it might be a percentage!")
+                    print(f"  [WARNING] Check if Instantly API is returning the correct field.")
+                    print(f"  [WARNING] Expected field: 'emails_sent_count', got value: {total_sent}")
+
                 # Calculate deliverability score
                 deliverability_score = (total_delivered / total_sent * 100) if total_sent > 0 else 0
 
@@ -519,8 +533,10 @@ class DataCollector:
                 days = (month_end - month_start).days + 1
 
                 # Store metrics
+                print(f"  Storing 'Emails Sent' with value: {total_sent}")
                 self._store_metric('email', 'awareness', 'Emails Sent',
                                   total_sent, 'emails_sent', days, year, month)
+                print(f"  Storing 'Emails Delivered' with value: {total_delivered}")
                 self._store_metric('email', 'awareness', 'Emails Delivered',
                                   total_delivered, 'emails_delivered', days, year, month)
 

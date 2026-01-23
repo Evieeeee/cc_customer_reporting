@@ -114,6 +114,13 @@ class InstantlyFetcher:
                 elif isinstance(data, list):
                     print(f"[DEBUG] Response is list with {len(data)} items")
 
+            # Always log key email metrics for debugging
+            print(f"[INSTANTLY API] Raw response type: {type(data)}")
+            if isinstance(data, dict):
+                print(f"[INSTANTLY API] emails_sent_count: {data.get('emails_sent_count', 'NOT IN RESPONSE')}")
+                print(f"[INSTANTLY API] contacted_count: {data.get('contacted_count', 'NOT IN RESPONSE')}")
+                print(f"[INSTANTLY API] All numeric fields: {[(k, v) for k, v in data.items() if isinstance(v, (int, float))]}")
+
             # Handle list response - aggregate all items
             if isinstance(data, list):
                 if not data:

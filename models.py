@@ -304,15 +304,21 @@ class HistoricalMetric:
                                .collection(str(current_year))
                                .document(str(current_month))
                                .collection('kpis'))
-                    
+
                     kpis = kpis_ref.stream()
-                    
-                    # Get first KPI for this stage
+
+                    # Get all KPIs for this stage (there may be multiple)
+                    kpi_list = []
                     for kpi_doc in kpis:
                         kpi_data = kpi_doc.to_dict()
                         kpi_data['kpi_name'] = kpi_doc.id
-                        metrics[medium][journey_stage] = kpi_data
-                        break  # Only take first KPI for this stage
+                        kpi_list.append(kpi_data)
+
+                    # If we have KPIs, use the first one for the old structure
+                    # but this should really return all KPIs
+                    if kpi_list:
+                        metrics[medium][journey_stage] = kpi_list[0]  # For backwards compatibility
+                        # TODO: Should return all KPIs, not just first one
                         
                 except Exception as e:
                     print(f"[DEBUG] Could not fetch latest for {medium}/{journey_stage}: {e}")
