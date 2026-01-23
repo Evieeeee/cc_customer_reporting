@@ -517,7 +517,6 @@ class DataCollector:
                 total_opened = analytics.get('open_count_unique', 0)
                 total_clicked = analytics.get('link_click_count_unique', 0)
                 total_replied = analytics.get('reply_count_unique', 0)
-                total_bounced = analytics.get('bounced_count', 0)
                 total_unsubscribed = analytics.get('unsubscribed_count', 0)
 
                 # Debug: Print extracted values
@@ -607,9 +606,6 @@ class DataCollector:
             print(f"  Opened:             {total_opened_all:,}")
             print(f"  Clicked:            {total_clicked_all:,}")
             print(f"  Replied:            {total_replied_all:,}")
-            print(f"  Overall Open Rate:  {(total_opened_all / total_delivered_all * 100) if total_delivered_all > 0 else 0:.1f}%")
-            print(f"  Overall Click Rate: {(total_clicked_all / total_delivered_all * 100) if total_delivered_all > 0 else 0:.1f}%")
-            print(f"  Overall Reply Rate: {(total_replied_all / total_delivered_all * 100) if total_delivered_all > 0 else 0:.1f}%")
             print(f"{'='*70}")
             print(f"  ✓ Stored {months_processed} months of email data")
             print(f"{'='*70}\n")

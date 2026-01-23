@@ -400,43 +400,26 @@ class InstantlyFetcher:
             # STAGE 1: AWARENESS (How many people did we reach?)
             'awareness': {
                 'emails_sent': totals['total_sent'],
-                'emails_delivered': totals['total_delivered'],
-                'delivery_rate': round((delivered / sent * 100) if sent > 0 else 0, 2),
-                'bounce_rate': round((totals['total_bounced'] / sent * 100) if sent > 0 else 0, 2),
-                'net_reach': totals['total_delivered']  # Actual people reached
             },
             
             # STAGE 2: ENGAGEMENT (How many people engaged?)
             'engagement': {
-                'total_opened': totals['total_opened'],
                 'total_clicked': totals['total_clicked'],
-                'open_rate': round((totals['total_opened'] / delivered * 100) if delivered > 0 else 0, 2),
-                'click_rate': round((totals['total_clicked'] / delivered * 100) if delivered > 0 else 0, 2),
-                'click_to_open_rate': round((totals['total_clicked'] / totals['total_opened'] * 100) if totals['total_opened'] > 0 else 0, 2)
             },
             
             # STAGE 3: RESPONSE (How many people responded?)
             'response': {
                 'total_replied': totals['total_replied'],
-                'total_leads': totals['total_leads'],
-                'reply_rate': round((totals['total_replied'] / delivered * 100) if delivered > 0 else 0, 2),
-                'lead_conversion_rate': round((totals['total_leads'] / delivered * 100) if delivered > 0 else 0, 2),
-                'reply_to_open_rate': round((totals['total_replied'] / totals['total_opened'] * 100) if totals['total_opened'] > 0 else 0, 2)
             },
             
             # STAGE 4: RETENTION (Are people staying on our list?)
             'retention': {
                 'total_unsubscribed': totals['total_unsubscribed'],
-                'unsubscribe_rate': round((totals['total_unsubscribed'] / delivered * 100) if delivered > 0 else 0, 2),
-                'active_list_size': delivered - totals['total_unsubscribed'] - totals['total_bounced']
             },
             
             # STAGE 5: QUALITY (How healthy is our email program?)
             'quality': {
-                'total_bounced': totals['total_bounced'],
-                'bounce_rate': round((totals['total_bounced'] / sent * 100) if sent > 0 else 0, 2),
                 'deliverability_score': round((delivered / sent * 100) if sent > 0 else 0, 2),
-                'engagement_quality': round(((totals['total_opened'] + totals['total_clicked']) / delivered * 100) if delivered > 0 else 0, 2)
             },
             
             # CAMPAIGN PERFORMANCE
