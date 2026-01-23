@@ -19,6 +19,7 @@ from models import (
     TopPerformer, get_benchmark
 )
 from data_collector import DataCollector
+from trendline_analyzer import TrendlineAnalyzer
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
@@ -157,10 +158,14 @@ def get_metric_history(customer_id):
         history = HistoricalMetric.get_history(
             customer_id, medium, journey_stage, kpi_name, months
         )
-        
+
+        # Add AI-powered trendline analysis
+        trendline_analysis = TrendlineAnalyzer.analyze_metric_history(history)
+
         return jsonify({
             'success': True,
-            'history': history
+            'history': history,
+            'trendline': trendline_analysis
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500

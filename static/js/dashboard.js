@@ -580,26 +580,27 @@ async function loadHistoricalChart(medium, journeyStage, kpiName) {
         );
         
         const data = await response.json();
-        
+
         if (data.success && data.history.length > 0) {
-            renderChart(medium, data.history, kpiName);
+            // Pass both history and trendline data
+            renderChart(medium, data.history, kpiName, data.trendline);
         }
     } catch (error) {
         console.error('Error loading chart data:', error);
     }
 }
 
-function renderChart(medium, history, kpiName) {
-    const canvasId = medium === 'social_media' ? 'socialMediaChart' : 
+function renderChart(medium, history, kpiName, trendline = null) {
+    const canvasId = medium === 'social_media' ? 'socialMediaChart' :
                      medium === 'website' ? 'websiteChart' : 'emailChart';
-    
+
     const ctx = document.getElementById(canvasId).getContext('2d');
-    
+
     // Destroy existing chart
     if (charts[medium === 'social_media' ? 'socialMedia' : medium]) {
         charts[medium === 'social_media' ? 'socialMedia' : medium].destroy();
     }
-    
+
     // Prepare data - use historical month/year, not recorded_at
     const labels = history.map(h => {
         // Use the 'date' field which is in format "YYYY-MM"
@@ -620,35 +621,60 @@ function renderChart(medium, history, kpiName) {
     });
     const actualValues = history.map(h => h.kpi_value);
     const benchmarkValues = history.map(h => h.benchmark_value);
-    
+
+    // Build datasets array
+    const datasets = [
+        {
+            label: kpiName,
+            data: actualValues,
+            borderColor: '#006039',
+            backgroundColor: 'rgba(0, 96, 57, 0.1)',
+            tension: 0.4,
+            fill: true,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            order: 2
+        },
+        {
+            label: 'Benchmark',
+            data: benchmarkValues,
+            borderColor: '#A37E2C',
+            backgroundColor: 'rgba(163, 126, 44, 0.1)',
+            borderDash: [5, 5],
+            tension: 0.4,
+            fill: false,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            order: 3
+        }
+    ];
+
+    // Add AI-powered trendline if available
+    if (trendline && trendline.values && trendline.values.length > 0) {
+        const trendlineLabel = `Trend (${trendline.type.replace(/_/g, ' ')})`;
+        datasets.push({
+            label: trendlineLabel,
+            data: trendline.values,
+            borderColor: '#00C853',  // Bright green for positive trend
+            backgroundColor: 'rgba(0, 200, 83, 0.05)',
+            borderWidth: 3,
+            borderDash: [10, 5],
+            tension: 0.1,
+            fill: false,
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            order: 1  // Draw on top
+        });
+
+        console.log(`AI Trendline: ${trendline.equation}, Score: ${trendline.score?.toFixed(2)}`);
+    }
+
     // Create chart
     const chart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: labels,
-            datasets: [
-                {
-                    label: kpiName,
-                    data: actualValues,
-                    borderColor: '#006039',
-                    backgroundColor: 'rgba(0, 96, 57, 0.1)',
-                    tension: 0.4,
-                    fill: true,
-                    pointRadius: 4,
-                    pointHoverRadius: 6
-                },
-                {
-                    label: 'Benchmark',
-                    data: benchmarkValues,
-                    borderColor: '#A37E2C',
-                    backgroundColor: 'rgba(163, 126, 44, 0.1)',
-                    borderDash: [5, 5],
-                    tension: 0.4,
-                    fill: false,
-                    pointRadius: 3,
-                    pointHoverRadius: 5
-                }
-            ]
+            datasets: datasets
         },
         options: {
             responsive: true,

@@ -780,22 +780,27 @@ class DataCollector:
                 
                 # Store metrics mapped to journey stages
                 # AWARENESS: Reach from Instagram
+                print(f"    Storing Reach: {data.get('reach', 0)}")
                 self._store_metric('social_media', 'awareness', 'Reach',
                                   data.get('reach', 0), 'reach', days, year, month)
 
                 # ENGAGEMENT: Post reactions (Facebook)
+                print(f"    Storing Reactions: {data.get('reactions', 0)}")
                 self._store_metric('social_media', 'engagement', 'Reactions',
                                   data.get('reactions', 0), 'reactions', days, year, month)
 
                 # CONVERSION: Post comments (Facebook) - interactions that lead to engagement
+                print(f"    Storing Comments: {data.get('comments', 0)}")
                 self._store_metric('social_media', 'conversion', 'Comments',
                                   data.get('comments', 0), 'comments', days, year, month)
 
                 # ADVOCACY: Post shares (Facebook)
+                print(f"    Storing Shares: {data.get('shares', 0)}")
                 self._store_metric('social_media', 'advocacy', 'Shares',
                                   data.get('shares', 0), 'shares', days, year, month)
 
                 # RETENTION: Follower count (Facebook + Instagram)
+                print(f"    Storing Followers: {data.get('followers', 0)}")
                 self._store_metric('social_media', 'retention', 'Followers',
                                   data.get('followers', 0), 'followers', days, year, month)
 
@@ -841,7 +846,7 @@ class DataCollector:
         start = now - timedelta(days=days)
         self.collect_website_bulk(start, now)
     
-    def _store_metric(self, medium: str, journey_stage: str, kpi_name: str, 
+    def _store_metric(self, medium: str, journey_stage: str, kpi_name: str,
                      kpi_value: float, benchmark_key: str, time_period_days: int,
                      year: int = None, month: int = None):
         """Store a metric with its benchmark for a specific month"""
@@ -852,7 +857,10 @@ class DataCollector:
             journey_stage,
             benchmark_key
         )
-        
+
+        # Debug output
+        print(f"      [STORE] {medium}/{journey_stage}/{kpi_name} = {kpi_value} (year={year}, month={month})")
+
         # Store in database with year/month
         HistoricalMetric.add(
             self.customer_id,

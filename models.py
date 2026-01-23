@@ -206,6 +206,10 @@ class HistoricalMetric:
             month = now.month
         
         # Structure: historical_metrics/{customer_id}/{medium}/{journey_stage}/{year}/{month}/{kpi_name}
+        path = f"{HISTORICAL_METRICS_COLLECTION}/{customer_id}/{medium}/{journey_stage}/{year}/{month}/kpis/{kpi_name}"
+        print(f"        [FIRESTORE] Writing to: {path}")
+        print(f"        [FIRESTORE] Value: {kpi_value}")
+
         doc_ref = (db.collection(HISTORICAL_METRICS_COLLECTION)
                    .document(customer_id)
                    .collection(medium)
@@ -214,7 +218,7 @@ class HistoricalMetric:
                    .document(str(month))
                    .collection('kpis')
                    .document(kpi_name))
-        
+
         metric_data = {
             'kpi_value': kpi_value,
             'benchmark_value': benchmark_value,
@@ -223,33 +227,38 @@ class HistoricalMetric:
             'year': year,
             'month': month
         }
-        
+
         doc_ref.set(metric_data)
+        print(f"        [FIRESTORE] ✓ Written successfully")
     
     @staticmethod
-    def get_history(customer_id: str, medium: str, journey_stage: str, 
+    def get_history(customer_id: str, medium: str, journey_stage: str,
                     kpi_name: str, months: int = 12) -> List[Dict]:
         """Get historical data for a specific KPI (last N months)"""
-        
+
+        print(f"[FIRESTORE READ] Getting history for {customer_id}/{medium}/{journey_stage}/{kpi_name}")
+
         # Get current year and month
         now = datetime.now()
         current_year = now.year
         current_month = now.month
-        
+
         results = []
-        
+
         # Iterate through last N months
         for i in range(months):
             # Calculate year and month for this iteration
             month = current_month - i
             year = current_year
-            
+
             while month <= 0:
                 month += 12
                 year -= 1
-            
+
             # Query this month's data
             try:
+                path = f"{HISTORICAL_METRICS_COLLECTION}/{customer_id}/{medium}/{journey_stage}/{year}/{month}/kpis/{kpi_name}"
+
                 doc_ref = (db.collection(HISTORICAL_METRICS_COLLECTION)
                           .document(customer_id)
                           .collection(medium)
@@ -258,42 +267,50 @@ class HistoricalMetric:
                           .document(str(month))
                           .collection('kpis')
                           .document(kpi_name))
-                
+
                 doc = doc_ref.get()
-                
+
                 if doc.exists:
                     data = doc.to_dict()
                     data['date'] = f"{year}-{month:02d}"
                     results.append(data)
+                    print(f"[FIRESTORE READ] ✓ Found {year}-{month:02d}: value={data.get('kpi_value')}")
+                else:
+                    print(f"[FIRESTORE READ] ✗ No data for {year}-{month:02d} at {path}")
             except Exception as e:
-                print(f"[WARNING] Could not fetch data for {year}-{month:02d}: {e}")
+                print(f"[FIRESTORE READ ERROR] Could not fetch data for {year}-{month:02d}: {e}")
                 continue
-        
+
         # Reverse to get chronological order (oldest to newest)
         results.reverse()
-        
+
+        print(f"[FIRESTORE READ] Returning {len(results)} data points")
         return results
     
     @staticmethod
     def get_latest_for_customer(customer_id: str) -> Dict:
         """Get the latest metrics for all KPIs for a customer"""
-        
+
+        print(f"[FIRESTORE READ] Getting latest metrics for customer {customer_id}")
+
         now = datetime.now()
         current_year = now.year
         current_month = now.month
-        
+
+        print(f"[FIRESTORE READ] Looking for data from {current_year}-{current_month:02d}")
+
         metrics = {}
-        
+
         # Define known mediums and stages
         mediums_and_stages = {
             'social_media': ['awareness', 'engagement', 'conversion', 'retention', 'advocacy'],
             'email': ['awareness', 'engagement', 'response', 'retention', 'quality'],
             'website': ['awareness', 'engagement', 'conversion', 'retention', 'advocacy']
         }
-        
+
         for medium, stages in mediums_and_stages.items():
             metrics[medium] = {}
-            
+
             for journey_stage in stages:
                 # Get current month's data for this medium/stage
                 try:
@@ -313,15 +330,18 @@ class HistoricalMetric:
                         kpi_data = kpi_doc.to_dict()
                         kpi_data['kpi_name'] = kpi_doc.id
                         kpi_list.append(kpi_data)
+                        print(f"[FIRESTORE READ] ✓ Found {medium}/{journey_stage}/{kpi_doc.id} = {kpi_data.get('kpi_value')}")
 
                     # If we have KPIs, use the first one for the old structure
                     # but this should really return all KPIs
                     if kpi_list:
                         metrics[medium][journey_stage] = kpi_list[0]  # For backwards compatibility
                         # TODO: Should return all KPIs, not just first one
-                        
+                    else:
+                        print(f"[FIRESTORE READ] ✗ No KPIs found for {medium}/{journey_stage}")
+
                 except Exception as e:
-                    print(f"[DEBUG] Could not fetch latest for {medium}/{journey_stage}: {e}")
+                    print(f"[FIRESTORE READ ERROR] Could not fetch latest for {medium}/{journey_stage}: {e}")
         
         return metrics
 
