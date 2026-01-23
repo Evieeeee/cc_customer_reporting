@@ -96,6 +96,9 @@ class InstantlyFetcher:
             'exclude_total_leads_count': 'true'
         }
 
+        # Always show what date range we're requesting
+        print(f"[INSTANTLY API] Requesting aggregate analytics from {start_date} to {end_date}")
+
         try:
             if debug:
                 print(f"[DEBUG] Fetching aggregate analytics")
@@ -123,17 +126,22 @@ class InstantlyFetcher:
 
             # Handle list response - aggregate all items
             if isinstance(data, list):
+                print(f"[INSTANTLY API] Response is a list with {len(data)} items - aggregating...")
                 if not data:
+                    print(f"[INSTANTLY API] Empty list returned")
                     return {}
                 # If it's a list of campaign analytics, sum them up
                 aggregated = {}
-                for item in data:
+                for i, item in enumerate(data):
                     if isinstance(item, dict):
+                        print(f"[INSTANTLY API] Item {i+1} keys: {list(item.keys())}")
                         for key, value in item.items():
                             if isinstance(value, (int, float)):
                                 aggregated[key] = aggregated.get(key, 0) + value
                             elif key not in aggregated:
                                 aggregated[key] = value
+                print(f"[INSTANTLY API] After aggregation - Total emails_sent_count: {aggregated.get('emails_sent_count', 'NOT FOUND')}")
+                print(f"[INSTANTLY API] After aggregation - Total contacted_count: {aggregated.get('contacted_count', 'NOT FOUND')}")
                 return aggregated
 
             return data

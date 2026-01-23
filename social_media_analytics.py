@@ -735,6 +735,15 @@ def get_facebook_posts_engagement(page_id, page_token, days_back=365):
 
         print(f"  [Facebook] ✓ Processed {posts_fetched} posts across {len(monthly_data)} months")
 
+        # Debug: Show detailed breakdown per month
+        print(f"  [Facebook] Monthly breakdown:")
+        for month_key in sorted(monthly_data.keys()):
+            month_data = monthly_data[month_key]
+            print(f"    {month_key}: {month_data['posts_count']} posts, "
+                  f"Reactions: {month_data['reactions']}, "
+                  f"Comments: {month_data['comments']}, "
+                  f"Shares: {month_data['shares']}")
+
     except requests.exceptions.RequestException as e:
         print(f"  [Facebook] Error fetching posts: {e}")
         print(f"  Page ID: {page_id}, Token available: {bool(page_token)}")
@@ -829,6 +838,14 @@ def get_instagram_account_insights(instagram_id, page_token, days_back=7):
     for metric in daily_metrics:
         if all_values[metric]:
             insights[metric] = all_values[metric]
+
+    # Debug: Show summary of collected data
+    print(f"  [Instagram] Collected {len(all_values.get('reach', []))} reach data points")
+    print(f"  [Instagram] Collected {len(all_values.get('accounts_engaged', []))} accounts_engaged data points")
+
+    # Debug: Show sample data point structure
+    if all_values.get('reach') and len(all_values['reach']) > 0:
+        print(f"  [Instagram] Sample reach data point: {all_values['reach'][0]}")
 
     # Follower count (lifetime metric, returns current value only)
     try:

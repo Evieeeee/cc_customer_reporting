@@ -479,6 +479,9 @@ class DataCollector:
 
             print(f"  Fetching email analytics from {start_month.strftime('%Y-%m')} to {end_month.strftime('%Y-%m')}")
 
+            # Track all monthly data for summary
+            all_monthly_data = {}
+
             # Iterate through each month and get aggregate analytics
             current_month = start_month
             months_processed = 0
@@ -554,6 +557,17 @@ class DataCollector:
                 self._store_metric('email', 'quality', 'Deliverability Score',
                                   deliverability_score, 'deliverability_score', days, year, month)
 
+                # Store for summary
+                all_monthly_data[f"{year}-{month:02d}"] = {
+                    'sent': total_sent,
+                    'delivered': total_delivered,
+                    'opened': total_opened,
+                    'clicked': total_clicked,
+                    'replied': total_replied,
+                    'unsubscribed': total_unsubscribed,
+                    'deliverability_score': deliverability_score
+                }
+
                 months_processed += 1
 
                 # Move to next month
@@ -562,7 +576,43 @@ class DataCollector:
                 else:
                     current_month = datetime(year, month + 1, 1)
 
+            # Print comprehensive summary of all collected email data
+            print(f"\n{'='*70}")
+            print(f"EMAIL DATA COLLECTION SUMMARY")
+            print(f"{'='*70}")
+            print(f"Total months collected: {months_processed}")
+            print(f"\nMonthly breakdown:")
+            for month_key in sorted(all_monthly_data.keys()):
+                data = all_monthly_data[month_key]
+                print(f"\n  {month_key}:")
+                print(f"    Emails Sent:        {data['sent']:,}")
+                print(f"    Emails Delivered:   {data['delivered']:,}")
+                print(f"    Opened:             {data['opened']:,}")
+                print(f"    Clicked:            {data['clicked']:,}")
+                print(f"    Replied:            {data['replied']:,}")
+                print(f"    Unsubscribed:       {data['unsubscribed']:,}")
+                print(f"    Deliverability:     {data['deliverability_score']:.1f}%")
+
+            # Calculate totals
+            total_sent_all = sum(d['sent'] for d in all_monthly_data.values())
+            total_delivered_all = sum(d['delivered'] for d in all_monthly_data.values())
+            total_opened_all = sum(d['opened'] for d in all_monthly_data.values())
+            total_clicked_all = sum(d['clicked'] for d in all_monthly_data.values())
+            total_replied_all = sum(d['replied'] for d in all_monthly_data.values())
+
+            print(f"\n{'='*70}")
+            print(f"TOTALS ACROSS ALL MONTHS:")
+            print(f"  Emails Sent:        {total_sent_all:,}")
+            print(f"  Emails Delivered:   {total_delivered_all:,}")
+            print(f"  Opened:             {total_opened_all:,}")
+            print(f"  Clicked:            {total_clicked_all:,}")
+            print(f"  Replied:            {total_replied_all:,}")
+            print(f"  Overall Open Rate:  {(total_opened_all / total_delivered_all * 100) if total_delivered_all > 0 else 0:.1f}%")
+            print(f"  Overall Click Rate: {(total_clicked_all / total_delivered_all * 100) if total_delivered_all > 0 else 0:.1f}%")
+            print(f"  Overall Reply Rate: {(total_replied_all / total_delivered_all * 100) if total_delivered_all > 0 else 0:.1f}%")
+            print(f"{'='*70}")
             print(f"  ✓ Stored {months_processed} months of email data")
+            print(f"{'='*70}\n")
             
         except Exception as e:
             print(f"  [ERROR] Email bulk collection failed: {e}")
@@ -609,6 +659,13 @@ class DataCollector:
                         days_back=days_total
                     )
 
+                    # Debug: Show what we got from Facebook
+                    print(f"    [DEBUG] Facebook monthly_data keys: {list(fb_data.get('monthly_data', {}).keys())}")
+                    total_fb_reactions = sum(month_data.get('reactions', 0) for month_data in fb_data.get('monthly_data', {}).values())
+                    total_fb_comments = sum(month_data.get('comments', 0) for month_data in fb_data.get('monthly_data', {}).values())
+                    total_fb_shares = sum(month_data.get('shares', 0) for month_data in fb_data.get('monthly_data', {}).values())
+                    print(f"    [DEBUG] Facebook totals - Reactions: {total_fb_reactions}, Comments: {total_fb_comments}, Shares: {total_fb_shares}")
+
                     # Aggregate Facebook data into monthly buckets
                     for month_str, month_data in fb_data.get('monthly_data', {}).items():
                         # Parse month string "YYYY-MM"
@@ -646,7 +703,14 @@ class DataCollector:
                             account['page_token'],
                             days_back=days_total
                         )
-                        
+
+                        # Debug: Show what we got from Instagram
+                        print(f"    [DEBUG] Instagram insights keys: {list(ig_insights.keys())}")
+                        if 'reach' in ig_insights:
+                            print(f"    [DEBUG] Instagram reach data points: {len(ig_insights['reach'])}")
+                        if 'accounts_engaged' in ig_insights:
+                            print(f"    [DEBUG] Instagram accounts_engaged data points: {len(ig_insights['accounts_engaged'])}")
+
                         # Parse reach data
                         if 'reach' in ig_insights:
                             for value_entry in ig_insights['reach']:
@@ -738,8 +802,24 @@ class DataCollector:
                 # RETENTION: Follower count (Facebook + Instagram)
                 self._store_metric('social_media', 'retention', 'Followers',
                                   data.get('followers', 0), 'followers', days, year, month)
-            
+
+            # Print comprehensive summary of all collected data
+            print(f"\n{'='*70}")
+            print(f"SOCIAL MEDIA DATA COLLECTION SUMMARY")
+            print(f"{'='*70}")
+            print(f"Total months collected: {len(monthly_data)}")
+            print(f"\nMonthly breakdown:")
+            for (year, month), data in sorted(monthly_data.items()):
+                print(f"\n  {year}-{month:02d}:")
+                print(f"    Reach:     {data.get('reach', 0):,}")
+                print(f"    Reactions: {data.get('reactions', 0):,}")
+                print(f"    Comments:  {data.get('comments', 0):,}")
+                print(f"    Shares:    {data.get('shares', 0):,}")
+                print(f"    Followers: {data.get('followers', 0):,}")
+
+            print(f"\n{'='*70}")
             print(f"  ✓ Stored {len(monthly_data)} months of social media data")
+            print(f"{'='*70}\n")
             
         except Exception as e:
             print(f"  [ERROR] Social bulk collection failed: {e}")
