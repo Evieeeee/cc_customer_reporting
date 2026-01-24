@@ -1,15 +1,46 @@
 """
 AI-Powered Trendline Analyzer
 Automatically selects the best trendline type that shows the most favorable positive trend
+Pure Python implementation (no numpy dependency)
 """
 
-import numpy as np
 from typing import List, Dict, Tuple
 from datetime import datetime
+import math
 
 
 class TrendlineAnalyzer:
     """Analyzes time series data and selects the most favorable trendline"""
+
+    @staticmethod
+    def _mean(values: List[float]) -> float:
+        """Calculate mean of a list"""
+        return sum(values) / len(values) if values else 0
+
+    @staticmethod
+    def _linear_regression(x_values: List[float], y_values: List[float]) -> Tuple[float, float]:
+        """
+        Calculate linear regression coefficients using least squares
+        Returns: (slope, intercept)
+        """
+        n = len(x_values)
+        if n < 2:
+            return 0, 0
+
+        x_mean = sum(x_values) / n
+        y_mean = sum(y_values) / n
+
+        # Calculate slope: sum((x - x_mean)(y - y_mean)) / sum((x - x_mean)^2)
+        numerator = sum((x_values[i] - x_mean) * (y_values[i] - y_mean) for i in range(n))
+        denominator = sum((x - x_mean) ** 2 for x in x_values)
+
+        if denominator == 0:
+            return 0, y_mean
+
+        slope = numerator / denominator
+        intercept = y_mean - slope * x_mean
+
+        return slope, intercept
 
     @staticmethod
     def linear_trendline(x_values: List[float], y_values: List[float]) -> Tuple[List[float], float, str]:
@@ -20,10 +51,7 @@ class TrendlineAnalyzer:
         if len(y_values) < 2:
             return y_values, 0, "Insufficient data"
 
-        # Use numpy for linear regression
-        coefficients = np.polyfit(x_values, y_values, 1)
-        slope = coefficients[0]
-        intercept = coefficients[1]
+        slope, intercept = TrendlineAnalyzer._linear_regression(x_values, y_values)
 
         # Calculate trendline values
         trendline = [slope * x + intercept for x in x_values]
@@ -32,24 +60,73 @@ class TrendlineAnalyzer:
         return trendline, slope, equation
 
     @staticmethod
+    def _polyfit_degree2(x_values: List[float], y_values: List[float]) -> Tuple[float, float, float]:
+        """
+        Fit a degree-2 polynomial using least squares (Vandermonde matrix approach)
+        Returns: (a, b, c) for y = ax^2 + bx + c
+        """
+        n = len(x_values)
+        if n < 3:
+            return 0, 0, TrendlineAnalyzer._mean(y_values)
+
+        # Build sums for normal equations
+        sum_x = sum(x_values)
+        sum_x2 = sum(x ** 2 for x in x_values)
+        sum_x3 = sum(x ** 3 for x in x_values)
+        sum_x4 = sum(x ** 4 for x in x_values)
+        sum_y = sum(y_values)
+        sum_xy = sum(x_values[i] * y_values[i] for i in range(n))
+        sum_x2y = sum(x_values[i] ** 2 * y_values[i] for i in range(n))
+
+        # Solve 3x3 system using Cramer's rule
+        # [sum_x4  sum_x3  sum_x2] [a]   [sum_x2y]
+        # [sum_x3  sum_x2  sum_x ] [b] = [sum_xy ]
+        # [sum_x2  sum_x   n     ] [c]   [sum_y  ]
+
+        det = (sum_x4 * (sum_x2 * n - sum_x * sum_x) -
+               sum_x3 * (sum_x3 * n - sum_x * sum_x2) +
+               sum_x2 * (sum_x3 * sum_x - sum_x2 * sum_x2))
+
+        if abs(det) < 1e-10:
+            # Fall back to linear
+            slope, intercept = TrendlineAnalyzer._linear_regression(x_values, y_values)
+            return 0, slope, intercept
+
+        det_a = (sum_x2y * (sum_x2 * n - sum_x * sum_x) -
+                 sum_x3 * (sum_xy * n - sum_x * sum_y) +
+                 sum_x2 * (sum_xy * sum_x - sum_x2 * sum_y))
+
+        det_b = (sum_x4 * (sum_xy * n - sum_x * sum_y) -
+                 sum_x2y * (sum_x3 * n - sum_x * sum_x2) +
+                 sum_x2 * (sum_x3 * sum_y - sum_x2 * sum_xy))
+
+        det_c = (sum_x4 * (sum_x2 * sum_y - sum_x * sum_xy) -
+                 sum_x3 * (sum_x3 * sum_y - sum_x * sum_x2y) +
+                 sum_x2y * (sum_x3 * sum_x - sum_x2 * sum_x2))
+
+        a = det_a / det
+        b = det_b / det
+        c = det_c / det
+
+        return a, b, c
+
+    @staticmethod
     def polynomial_trendline(x_values: List[float], y_values: List[float], degree: int = 2) -> Tuple[List[float], float, str]:
         """
-        Calculate polynomial trendline
+        Calculate polynomial trendline (degree 2)
         Returns: (trendline_values, end_slope, equation)
         """
         if len(y_values) < degree + 1:
             return y_values, 0, "Insufficient data"
 
-        # Fit polynomial
-        coefficients = np.polyfit(x_values, y_values, degree)
-        polynomial = np.poly1d(coefficients)
+        # Fit polynomial (only degree 2 supported in pure Python)
+        a, b, c = TrendlineAnalyzer._polyfit_degree2(x_values, y_values)
 
-        # Calculate trendline values
-        trendline = [polynomial(x) for x in x_values]
+        # Calculate trendline values: y = ax^2 + bx + c
+        trendline = [a * x ** 2 + b * x + c for x in x_values]
 
-        # Calculate slope at the end (derivative)
-        derivative = np.polyder(polynomial)
-        end_slope = derivative(x_values[-1])
+        # Calculate slope at the end (derivative: 2ax + b)
+        end_slope = 2 * a * x_values[-1] + b
 
         equation = f"Polynomial (degree {degree})"
         return trendline, end_slope, equation
