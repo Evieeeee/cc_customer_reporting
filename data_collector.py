@@ -60,7 +60,7 @@ class GA4Fetcher:
     def __init__(self, property_id: str, endpoint_url: str = None):
         """
         Initialize with GA4 property ID and optional custom endpoint
-        
+
         Args:
             property_id: GA4 property ID
             endpoint_url: Your GA4 analytics endpoint URL
@@ -68,6 +68,14 @@ class GA4Fetcher:
         self.property_id = property_id
         # Use the enhanced GA4 endpoint (now supports monthly segments)
         self.endpoint_url = endpoint_url or "https://ga4-analytics-ioneema27a-uc.a.run.app"
+
+        # Load API key from GA4_API_KEY secret
+        self.api_key = os.environ.get('GA4_API_KEY')
+        if not self.api_key:
+            print("[WARNING] GA4_API_KEY secret not set - requests may fail authentication")
+        else:
+            print(f"[OK] GA4_API_KEY loaded ({self.api_key[:8]}...)")
+
         print(f"[INFO] Using enhanced GA4 endpoint: {self.endpoint_url}")
     
     def get_monthly_metrics_bulk(self, start_month: str, end_month: str) -> Dict:
@@ -92,6 +100,11 @@ class GA4Fetcher:
         print(f"[INFO] Date range: {start_month} to {end_month}")
         
         try:
+            # Build headers with API key authentication
+            headers = {}
+            if self.api_key:
+                headers['X-API-Key'] = self.api_key
+
             # Call enhanced endpoint with month range
             response = requests.get(
                 f"{self.endpoint_url}/ga4",
@@ -99,6 +112,7 @@ class GA4Fetcher:
                     "start_month": start_month,
                     "end_month": end_month
                 },
+                headers=headers,
                 timeout=120
             )
             
