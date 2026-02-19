@@ -228,43 +228,55 @@ def get_instagram_account_metrics_bulk(instagram_id, page_token, days_back=365):
         current_chunk_start = max(current_chunk_end - timedelta(days=30), start_date)
         print(f"    Chunk: {current_chunk_start.strftime('%Y-%m-%d')} to {current_chunk_end.strftime('%Y-%m-%d')}")
 
-        params = {
-            'metric': 'reach,accounts_engaged',
-            'period': 'day',
-            'access_token': page_token,
-            'since': current_chunk_start.strftime('%Y-%m-%d'),
-            'until': current_chunk_end.strftime('%Y-%m-%d'),
-            'metric_type': 'total_value'
-        }
-
         try:
-            response = requests.get(insights_url, params=params, timeout=30)
-            if response.status_code != 200:
-                print(f"    [Instagram] Insights error {response.status_code}")
-                try:
-                    print(f"    [Instagram] {json.dumps(response.json(), indent=2)}")
-                except Exception:
-                    print(f"    [Instagram] {response.text}")
-            response.raise_for_status()
-            data = response.json().get('data', [])
-
-            for metric_obj in data:
-                metric_name = metric_obj.get('name')
-                for value_obj in metric_obj.get('values', []):
-                    value = value_obj.get('value', 0)
-                    end_time = value_obj.get('end_time', '')
-                    if not end_time:
+            # --- reach: uses values[] array, no metric_type ---
+            reach_params = {
+                'metric': 'reach',
+                'period': 'day',
+                'access_token': page_token,
+                'since': current_chunk_start.strftime('%Y-%m-%d'),
+                'until': current_chunk_end.strftime('%Y-%m-%d'),
+            }
+            reach_response = requests.get(insights_url, params=reach_params, timeout=30)
+            if reach_response.status_code == 200:
+                for metric_obj in reach_response.json().get('data', []):
+                    if metric_obj.get('name') != 'reach':
                         continue
-                    date = datetime.strptime(end_time[:10], '%Y-%m-%d')
-                    month_key = f"{date.year}-{date.month:02d}"
-                    if month_key not in monthly_data:
-                        monthly_data[month_key] = {
-                            'reach': 0,
-                            'accounts_engaged': 0,
-                            'link_taps': 0
-                        }
-                    if metric_name in ('reach', 'accounts_engaged'):
-                        monthly_data[month_key][metric_name] += value
+                    for value_obj in metric_obj.get('values', []):
+                        value = value_obj.get('value', 0)
+                        end_time = value_obj.get('end_time', '')
+                        if not end_time:
+                            continue
+                        date = datetime.strptime(end_time[:10], '%Y-%m-%d')
+                        month_key = f"{date.year}-{date.month:02d}"
+                        if month_key not in monthly_data:
+                            monthly_data[month_key] = {'reach': 0, 'accounts_engaged': 0, 'link_taps': 0}
+                        monthly_data[month_key]['reach'] += value
+            else:
+                print(f"    [Instagram] reach error {reach_response.status_code}")
+
+            # --- accounts_engaged: metric_type=total_value returns total_value{value} not values[] ---
+            engaged_params = {
+                'metric': 'accounts_engaged',
+                'period': 'day',
+                'access_token': page_token,
+                'since': current_chunk_start.strftime('%Y-%m-%d'),
+                'until': current_chunk_end.strftime('%Y-%m-%d'),
+                'metric_type': 'total_value'
+            }
+            engaged_response = requests.get(insights_url, params=engaged_params, timeout=30)
+            if engaged_response.status_code == 200:
+                for metric_obj in engaged_response.json().get('data', []):
+                    if metric_obj.get('name') != 'accounts_engaged':
+                        continue
+                    value = metric_obj.get('total_value', {}).get('value', 0)
+                    # Attribute the total to the chunk's end month
+                    chunk_month = current_chunk_end.strftime('%Y-%m')
+                    if chunk_month not in monthly_data:
+                        monthly_data[chunk_month] = {'reach': 0, 'accounts_engaged': 0, 'link_taps': 0}
+                    monthly_data[chunk_month]['accounts_engaged'] += value
+            else:
+                print(f"    [Instagram] accounts_engaged error {engaged_response.status_code}")
 
         except Exception as e:
             print(f"    [Instagram] Chunk error: {e}")
@@ -291,42 +303,32 @@ def get_instagram_account_metrics_bulk(instagram_id, page_token, days_back=365):
             link_data = link_response.json().get('data', [])
             for metric_obj in link_data:
                 if metric_obj.get('name') == 'profile_links_taps':
-                    for value_obj in metric_obj.get('values', []):
-                        value = value_obj.get('value', 0)
-                        end_time = value_obj.get('end_time', '')
-                        if not end_time:
-                            continue
-                        date = datetime.strptime(end_time[:10], '%Y-%m-%d')
-                        month_key = f"{date.year}-{date.month:02d}"
-                        if month_key not in monthly_data:
-                            monthly_data[month_key] = {
-                                'reach': 0,
-                                'accounts_engaged': 0,
-                                'link_taps': 0
-                            }
-                        monthly_data[month_key]['link_taps'] += value
+                    # metric_type=total_value returns total_value{value}, not values[]
+                    value = metric_obj.get('total_value', {}).get('value', 0)
+                    month_key = end_date.strftime('%Y-%m')
+                    if month_key not in monthly_data:
+                        monthly_data[month_key] = {'reach': 0, 'accounts_engaged': 0, 'link_taps': 0}
+                    monthly_data[month_key]['link_taps'] += value
             print(f"  [Instagram] profile_links_taps collected")
         else:
             print(f"  [Instagram] profile_links_taps not available (status {link_response.status_code}) - using 0")
     except Exception as e:
         print(f"  [Instagram] Could not retrieve profile_link_taps: {e}")
 
-    # --- follower_count (current, point-in-time) ---
+    # --- follower_count: read from IG user object (insights metric is daily GAIN, not total) ---
     follower_count = 0
     try:
-        follower_params = {
-            'metric': 'follower_count',
-            'period': 'day',
+        user_url = f"https://graph.facebook.com/{API_VERSION}/{instagram_id}"
+        user_params = {
+            'fields': 'followers_count',
             'access_token': page_token
         }
-        follower_response = requests.get(insights_url, params=follower_params, timeout=10)
-        if follower_response.status_code == 200:
-            follower_data = follower_response.json().get('data', [])
-            if follower_data and follower_data[0].get('values'):
-                follower_count = follower_data[0]['values'][-1].get('value', 0)
-                print(f"  [Instagram] Follower count: {follower_count:,}")
+        user_response = requests.get(user_url, params=user_params, timeout=10)
+        if user_response.status_code == 200:
+            follower_count = user_response.json().get('followers_count', 0)
+            print(f"  [Instagram] Follower count: {follower_count:,}")
         else:
-            print(f"  [Instagram] follower_count not available (status {follower_response.status_code})")
+            print(f"  [Instagram] followers_count field not available (status {user_response.status_code})")
     except Exception as e:
         print(f"  [Instagram] Could not retrieve follower_count: {e}")
 
