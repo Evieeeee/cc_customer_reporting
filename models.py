@@ -304,6 +304,8 @@ class HistoricalMetric:
         # Define known mediums and stages
         mediums_and_stages = {
             'social_media': ['awareness', 'engagement', 'conversion', 'retention', 'advocacy'],
+            'social_media_facebook': ['awareness', 'engagement', 'conversion', 'retention', 'advocacy'],
+            'social_media_instagram': ['awareness', 'engagement', 'conversion', 'retention', 'advocacy'],
             'email': ['awareness', 'engagement', 'response', 'retention', 'quality'],
             'website': ['awareness', 'engagement', 'conversion', 'retention', 'advocacy']
         }
@@ -413,8 +415,22 @@ INDUSTRY_BENCHMARKS = {
             'awareness': {'reach': 1000, 'impressions': 2000},
             'engagement': {'engagement_rate': 2.5, 'interactions': 50},
             'conversion': {'link_clicks': 20, 'cta_clicks': 10},
-            'retention': {'follower_growth': 5, 'repeat_engagement': 15},
+            'retention': {'follower_growth': 5, 'repeat_engagement': 15, 'followers': 500},
             'advocacy': {'shares': 5, 'mentions': 3}
+        },
+        'social_media_facebook': {
+            'awareness': {'reach': 600},
+            'engagement': {'interactions': 30},
+            'conversion': {'link_clicks': 15},
+            'retention': {'followers': 300},
+            'advocacy': {'shares': 3}
+        },
+        'social_media_instagram': {
+            'awareness': {'reach': 400},
+            'engagement': {'interactions': 20},
+            'conversion': {'link_clicks': 5},
+            'retention': {'followers': 200},
+            'advocacy': {'shares': 2}
         },
         'website': {
             'awareness': {'sessions': 500, 'users': 400},
@@ -436,8 +452,22 @@ INDUSTRY_BENCHMARKS = {
             'awareness': {'reach': 800, 'impressions': 1500},
             'engagement': {'engagement_rate': 3.0, 'interactions': 60},
             'conversion': {'link_clicks': 25, 'cta_clicks': 12},
-            'retention': {'follower_growth': 6, 'repeat_engagement': 18},
+            'retention': {'follower_growth': 6, 'repeat_engagement': 18, 'followers': 400},
             'advocacy': {'shares': 6, 'mentions': 4}
+        },
+        'social_media_facebook': {
+            'awareness': {'reach': 500},
+            'engagement': {'interactions': 36},
+            'conversion': {'link_clicks': 18},
+            'retention': {'followers': 250},
+            'advocacy': {'shares': 4}
+        },
+        'social_media_instagram': {
+            'awareness': {'reach': 300},
+            'engagement': {'interactions': 24},
+            'conversion': {'link_clicks': 7},
+            'retention': {'followers': 150},
+            'advocacy': {'shares': 2}
         },
         'website': {
             'awareness': {'sessions': 600, 'users': 450},
@@ -459,8 +489,22 @@ INDUSTRY_BENCHMARKS = {
             'awareness': {'reach': 900, 'impressions': 1800},
             'engagement': {'engagement_rate': 2.2, 'interactions': 45},
             'conversion': {'link_clicks': 18, 'cta_clicks': 9},
-            'retention': {'follower_growth': 4, 'repeat_engagement': 12},
+            'retention': {'follower_growth': 4, 'repeat_engagement': 12, 'followers': 450},
             'advocacy': {'shares': 4, 'mentions': 2}
+        },
+        'social_media_facebook': {
+            'awareness': {'reach': 540},
+            'engagement': {'interactions': 27},
+            'conversion': {'link_clicks': 12},
+            'retention': {'followers': 270},
+            'advocacy': {'shares': 3}
+        },
+        'social_media_instagram': {
+            'awareness': {'reach': 360},
+            'engagement': {'interactions': 18},
+            'conversion': {'link_clicks': 6},
+            'retention': {'followers': 180},
+            'advocacy': {'shares': 1}
         },
         'website': {
             'awareness': {'sessions': 550, 'users': 420},
@@ -482,8 +526,22 @@ INDUSTRY_BENCHMARKS = {
             'awareness': {'reach': 1000, 'impressions': 2000},
             'engagement': {'engagement_rate': 2.5, 'interactions': 50},
             'conversion': {'link_clicks': 20, 'cta_clicks': 10},
-            'retention': {'follower_growth': 5, 'repeat_engagement': 15},
+            'retention': {'follower_growth': 5, 'repeat_engagement': 15, 'followers': 500},
             'advocacy': {'shares': 5, 'mentions': 3}
+        },
+        'social_media_facebook': {
+            'awareness': {'reach': 600},
+            'engagement': {'interactions': 30},
+            'conversion': {'link_clicks': 15},
+            'retention': {'followers': 300},
+            'advocacy': {'shares': 3}
+        },
+        'social_media_instagram': {
+            'awareness': {'reach': 400},
+            'engagement': {'interactions': 20},
+            'conversion': {'link_clicks': 5},
+            'retention': {'followers': 200},
+            'advocacy': {'shares': 2}
         },
         'website': {
             'awareness': {'sessions': 500, 'users': 400},

@@ -48,6 +48,10 @@ from models import (
 from email_metrics_fetcher import InstantlyFetcher, KlaviyoFetcher
 from social_media_analytics import (
     get_all_pages_and_instagram_accounts,
+    get_facebook_metrics_bulk,
+    get_instagram_account_metrics_bulk,
+    get_instagram_shares_bulk,
+    # Legacy wrappers kept for import compatibility
     get_facebook_posts_engagement,
     get_instagram_account_insights,
     get_instagram_media_insights
@@ -631,211 +635,266 @@ class DataCollector:
     
     def collect_social_bulk(self, start_month: datetime, end_month: datetime):
         """
-        Collect social media data for ALL 12 months with daily granularity
-        Gets data with period='day' and groups into monthly buckets
+        Collect social media data for ALL months, storing metrics separately for
+        Facebook, Instagram, and as a combined total.
+
+        Mediums written to Firestore:
+          social_media           - combined totals (for the Total tab)
+          social_media_facebook  - Facebook-only metrics
+          social_media_instagram - Instagram-only metrics
+
+        Per-platform metrics per journey stage:
+          Reach      (awareness):   FB post_impressions_unique / IG reach
+          Engagement (engagement):  FB reactions+comments / IG accounts_engaged
+          Conversion (conversion):  FB post_clicks / IG profile_links_taps
+          Retention  (retention):   FB fan_count / IG follower_count
+          Advocacy   (advocacy):    FB shares / IG media shares
         """
         social_creds = self.credentials.get('social_media', {})
         system_token = social_creds.get('system_user_token')
-        
+
         if not system_token:
             print("  [WARNING] No social media credentials")
             return
-        
+
         try:
             accounts = get_all_pages_and_instagram_accounts(system_token)
-            
+
             if not accounts:
                 print("  [WARNING] No accounts found")
                 return
-            
+
             print(f"  Found {len(accounts)} social media accounts")
-            
+
             # Calculate total days to request
             days_total = (end_month - start_month).days + 1
-            
-            # Initialize monthly buckets
-            monthly_data = {}
-            
-            # For each account, get data with daily granularity
+
+            # Monthly buckets keyed by (year, month) tuple
+            # Each holds platform-separated data
+            fb_monthly: Dict = {}    # (year, month) -> {reach, engagement, conversion, retention, advocacy}
+            ig_monthly: Dict = {}    # (year, month) -> {reach, engagement, conversion, retention, advocacy}
+
+            # Accumulate fan/follower counts per account (point-in-time)
+            total_fb_fan_count = 0
+            total_ig_follower_count = 0
+
+            # Accumulate all posts across accounts for top performers
+            all_fb_posts = []
+            all_ig_posts = []
+
             for account in accounts:
-                print(f"  Processing account: {account['page_name']}")
-                print(f'Triaging account: {json.dumps(account, indent=2)}')
-                
-                # Get Facebook post engagement data
+                print(f"\n  Processing account: {account['page_name']}")
+
+                # ---- FACEBOOK ----
                 try:
-                    fb_data = get_facebook_posts_engagement(
+                    fb_data = get_facebook_metrics_bulk(
                         account['page_id'],
                         account['page_token'],
                         days_back=days_total
                     )
 
-                    # Debug: Show what we got from Facebook
-                    print(f"    [DEBUG] Facebook monthly_data keys: {list(fb_data.get('monthly_data', {}).keys())}")
-                    total_fb_reactions = sum(month_data.get('reactions', 0) for month_data in fb_data.get('monthly_data', {}).values())
-                    total_fb_comments = sum(month_data.get('comments', 0) for month_data in fb_data.get('monthly_data', {}).values())
-                    total_fb_shares = sum(month_data.get('shares', 0) for month_data in fb_data.get('monthly_data', {}).values())
-                    print(f"    [DEBUG] Facebook totals - Reactions: {total_fb_reactions}, Comments: {total_fb_comments}, Shares: {total_fb_shares}")
+                    total_fb_fan_count += fb_data.get('fan_count', 0)
+                    all_fb_posts.extend(fb_data.get('all_posts', []))
 
-                    # Aggregate Facebook data into monthly buckets
-                    for month_str, month_data in fb_data.get('monthly_data', {}).items():
-                        # Parse month string "YYYY-MM"
+                    for month_str, m in fb_data.get('monthly_data', {}).items():
                         year, month = map(int, month_str.split('-'))
-                        month_key = (year, month)
-
-                        if month_key not in monthly_data:
-                            monthly_data[month_key] = {
-                                'reactions': 0,   # Engagement metric
-                                'comments': 0,    # Response metric
-                                'shares': 0,      # Advocacy metric
-                                'reach': 0,       # Instagram will add to this
-                                'followers': 0    # Page + Instagram followers
+                        mk = (year, month)
+                        if mk not in fb_monthly:
+                            fb_monthly[mk] = {
+                                'reach': 0, 'engagement': 0,
+                                'conversion': 0, 'advocacy': 0
                             }
+                        fb_monthly[mk]['reach'] += m.get('reach', 0)
+                        fb_monthly[mk]['engagement'] += (m.get('reactions', 0) + m.get('comments', 0))
+                        fb_monthly[mk]['conversion'] += m.get('clicks', 0)
+                        fb_monthly[mk]['advocacy'] += m.get('shares', 0)
 
-                        monthly_data[month_key]['reactions'] += month_data.get('reactions', 0)
-                        monthly_data[month_key]['comments'] += month_data.get('comments', 0)
-                        monthly_data[month_key]['shares'] += month_data.get('shares', 0)
-
-                    # Add follower count (point-in-time from page object)
-                    for month_key in monthly_data:
-                        monthly_data[month_key]['followers'] += account.get('fan_count', 0)
+                    print(f"    [Facebook] {len(fb_data.get('monthly_data', {}))} months, fan_count={fb_data.get('fan_count', 0):,}")
 
                 except Exception as e:
-                    print(f"    [ERROR] Facebook failed for account {account.get('page_name', 'unknown')}: {e}")
+                    print(f"    [ERROR] Facebook failed for {account.get('page_name', 'unknown')}: {e}")
                     import traceback
                     traceback.print_exc()
-                    print(f"    Account details: page_id={account.get('page_id')}, has_token={bool(account.get('page_token'))}")
-                
-                # Get Instagram insights
+
+                # ---- INSTAGRAM ----
                 if account.get('instagram_id'):
                     try:
-                        ig_insights = get_instagram_account_insights(
+                        ig_account_data = get_instagram_account_metrics_bulk(
+                            account['instagram_id'],
+                            account['page_token'],
+                            days_back=days_total
+                        )
+                        ig_shares_data = get_instagram_shares_bulk(
                             account['instagram_id'],
                             account['page_token'],
                             days_back=days_total
                         )
 
-                        # Debug: Show what we got from Instagram
-                        print(f"    [DEBUG] Instagram insights keys: {list(ig_insights.keys())}")
-                        if 'reach' in ig_insights:
-                            print(f"    [DEBUG] Instagram reach data points: {len(ig_insights['reach'])}")
-                        if 'accounts_engaged' in ig_insights:
-                            print(f"    [DEBUG] Instagram accounts_engaged data points: {len(ig_insights['accounts_engaged'])}")
+                        total_ig_follower_count += ig_account_data.get('follower_count', 0)
+                        all_ig_posts.extend(ig_shares_data.get('all_posts', []))
 
-                        # Parse reach data
-                        if 'reach' in ig_insights:
-                            for value_entry in ig_insights['reach']:
-                                date_str = value_entry.get('end_time', '')
-                                value = value_entry.get('value', 0)
+                        # Merge account-level metrics
+                        for month_str, m in ig_account_data.get('monthly_data', {}).items():
+                            year, month = map(int, month_str.split('-'))
+                            mk = (year, month)
+                            if mk not in ig_monthly:
+                                ig_monthly[mk] = {
+                                    'reach': 0, 'engagement': 0,
+                                    'conversion': 0, 'advocacy': 0
+                                }
+                            ig_monthly[mk]['reach'] += m.get('reach', 0)
+                            ig_monthly[mk]['engagement'] += m.get('accounts_engaged', 0)
+                            ig_monthly[mk]['conversion'] += m.get('link_taps', 0)
 
-                                if date_str:
-                                    try:
-                                        date_obj = datetime.strptime(date_str[:10], '%Y-%m-%d')
-                                        month_key = (date_obj.year, date_obj.month)
+                        # Merge media shares
+                        for month_str, m in ig_shares_data.get('monthly_data', {}).items():
+                            year, month = map(int, month_str.split('-'))
+                            mk = (year, month)
+                            if mk not in ig_monthly:
+                                ig_monthly[mk] = {
+                                    'reach': 0, 'engagement': 0,
+                                    'conversion': 0, 'advocacy': 0
+                                }
+                            ig_monthly[mk]['advocacy'] += m.get('shares', 0)
 
-                                        if month_key not in monthly_data:
-                                            monthly_data[month_key] = {
-                                                'reactions': 0,   # Facebook will populate
-                                                'comments': 0,    # Facebook will populate
-                                                'shares': 0,      # Facebook will populate
-                                                'reach': 0,       # Instagram reach
-                                                'followers': 0    # Both platforms
-                                            }
+                        print(f"    [Instagram] {len(ig_account_data.get('monthly_data', {}))} months, followers={ig_account_data.get('follower_count', 0):,}")
 
-                                        monthly_data[month_key]['reach'] += value
-                                    except Exception as parse_err:
-                                        print(f"      [WARNING] Failed to parse reach date '{date_str}': {parse_err}")
-
-                        # Parse impressions data (not used in final metrics, but good for debugging)
-                        if 'impressions' in ig_insights:
-                            for value_entry in ig_insights['impressions']:
-                                date_str = value_entry.get('end_time', '')
-                                value = value_entry.get('value', 0)
-
-                                if date_str:
-                                    try:
-                                        date_obj = datetime.strptime(date_str[:10], '%Y-%m-%d')
-                                        month_key = (date_obj.year, date_obj.month)
-
-                                        if month_key not in monthly_data:
-                                            monthly_data[month_key] = {
-                                                'reactions': 0,
-                                                'comments': 0,
-                                                'shares': 0,
-                                                'reach': 0,
-                                                'followers': 0
-                                            }
-
-                                        # Store impressions for potential future use (not currently displayed)
-                                        # monthly_data[month_key]['impressions'] = value
-                                    except Exception as parse_err:
-                                        print(f"      [WARNING] Failed to parse impressions date '{date_str}': {parse_err}")
-
-                        # Add Instagram follower count
-                        for month_key in monthly_data:
-                            monthly_data[month_key]['followers'] += account.get('followers_count', 0)
-                        
                     except Exception as e:
-                        print(f"    [ERROR] Instagram failed for account {account.get('page_name', 'unknown')}: {e}")
+                        print(f"    [ERROR] Instagram failed for {account.get('page_name', 'unknown')}: {e}")
                         import traceback
                         traceback.print_exc()
-                        print(f"    Account details: instagram_id={account.get('instagram_id')}, has_token={bool(account.get('page_token'))}")
-            
-            # Store monthly aggregated data
-            for (year, month), data in monthly_data.items():
-                print(f"  Storing {year}-{month:02d}...")
-                
+
+            # ---- SAVE TOP PERFORMERS ----
+            # Top 3 Facebook posts by engagement (reactions + comments)
+            top_fb = sorted(all_fb_posts, key=lambda p: p.get('engagement', 0), reverse=True)[:3]
+            for post in top_fb:
+                try:
+                    TopPerformer.add(
+                        customer_id=self.customer_id,
+                        medium='social_media_facebook',
+                        item_id=post['id'],
+                        item_title=post['title'],
+                        metric_name='Engagement',
+                        metric_value=post['engagement']
+                    )
+                    TopPerformer.add(
+                        customer_id=self.customer_id,
+                        medium='social_media',
+                        item_id=post['id'],
+                        item_title=f"[FB] {post['title']}",
+                        metric_name='Engagement',
+                        metric_value=post['engagement']
+                    )
+                except Exception as e:
+                    print(f"    [WARNING] Could not save FB top performer: {e}")
+
+            # Top 3 Instagram posts by engagement (likes + comments)
+            top_ig = sorted(all_ig_posts, key=lambda p: p.get('engagement', 0), reverse=True)[:3]
+            for post in top_ig:
+                try:
+                    TopPerformer.add(
+                        customer_id=self.customer_id,
+                        medium='social_media_instagram',
+                        item_id=post['id'],
+                        item_title=post['title'],
+                        metric_name='Engagement',
+                        metric_value=post['engagement']
+                    )
+                    TopPerformer.add(
+                        customer_id=self.customer_id,
+                        medium='social_media',
+                        item_id=post['id'],
+                        item_title=f"[IG] {post['title']}",
+                        metric_name='Engagement',
+                        metric_value=post['engagement']
+                    )
+                except Exception as e:
+                    print(f"    [WARNING] Could not save IG top performer: {e}")
+
+            print(f"  Saved top {len(top_fb)} FB and {len(top_ig)} IG posts as top performers")
+
+            # ---- STORE METRICS ----
+            all_months = set(fb_monthly.keys()) | set(ig_monthly.keys())
+
+            print(f"\n  Storing data for {len(all_months)} months...")
+
+            for (year, month) in sorted(all_months):
+                month_key_str = f"{year}-{month:02d}"
+
                 # Calculate days in month
-                if month == 12:
-                    next_month = datetime(year + 1, 1, 1)
-                else:
-                    next_month = datetime(year, month + 1, 1)
-                month_start = datetime(year, month, 1)
-                days = (next_month - month_start).days
-                
-                # Store metrics mapped to journey stages
-                # AWARENESS: Reach from Instagram
-                print(f"    Storing Reach: {data.get('reach', 0)}")
+                next_m = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
+                days = (next_m - datetime(year, month, 1)).days
+
+                fb = fb_monthly.get((year, month), {})
+                ig = ig_monthly.get((year, month), {})
+
+                # Combined totals
+                combined_reach = fb.get('reach', 0) + ig.get('reach', 0)
+                combined_engagement = fb.get('engagement', 0) + ig.get('engagement', 0)
+                combined_conversion = fb.get('conversion', 0) + ig.get('conversion', 0)
+                combined_retention = total_fb_fan_count + total_ig_follower_count
+                combined_advocacy = fb.get('advocacy', 0) + ig.get('advocacy', 0)
+
+                print(f"  Storing {month_key_str} (total: reach={combined_reach}, engagement={combined_engagement}, "
+                      f"conversion={combined_conversion}, retention={combined_retention}, advocacy={combined_advocacy})")
+
+                # --- social_media (combined total) ---
                 self._store_metric('social_media', 'awareness', 'Reach',
-                                  data.get('reach', 0), 'reach', days, year, month)
-
-                # ENGAGEMENT: Post reactions (Facebook)
-                print(f"    Storing Reactions: {data.get('reactions', 0)}")
-                self._store_metric('social_media', 'engagement', 'Reactions',
-                                  data.get('reactions', 0), 'reactions', days, year, month)
-
-                # CONVERSION: Post comments (Facebook) - interactions that lead to engagement
-                print(f"    Storing Comments: {data.get('comments', 0)}")
-                self._store_metric('social_media', 'conversion', 'Comments',
-                                  data.get('comments', 0), 'comments', days, year, month)
-
-                # ADVOCACY: Post shares (Facebook)
-                print(f"    Storing Shares: {data.get('shares', 0)}")
-                self._store_metric('social_media', 'advocacy', 'Shares',
-                                  data.get('shares', 0), 'shares', days, year, month)
-
-                # RETENTION: Follower count (Facebook + Instagram)
-                print(f"    Storing Followers: {data.get('followers', 0)}")
+                                   combined_reach, 'reach', days, year, month)
+                self._store_metric('social_media', 'engagement', 'Engagement',
+                                   combined_engagement, 'interactions', days, year, month)
+                self._store_metric('social_media', 'conversion', 'Link Clicks',
+                                   combined_conversion, 'link_clicks', days, year, month)
                 self._store_metric('social_media', 'retention', 'Followers',
-                                  data.get('followers', 0), 'followers', days, year, month)
+                                   combined_retention, 'followers', days, year, month)
+                self._store_metric('social_media', 'advocacy', 'Shares',
+                                   combined_advocacy, 'shares', days, year, month)
 
-            # Print comprehensive summary of all collected data
+                # --- social_media_facebook ---
+                fb_retention = total_fb_fan_count
+                self._store_metric('social_media_facebook', 'awareness', 'Reach',
+                                   fb.get('reach', 0), 'reach', days, year, month)
+                self._store_metric('social_media_facebook', 'engagement', 'Engagement',
+                                   fb.get('engagement', 0), 'interactions', days, year, month)
+                self._store_metric('social_media_facebook', 'conversion', 'Link Clicks',
+                                   fb.get('conversion', 0), 'link_clicks', days, year, month)
+                self._store_metric('social_media_facebook', 'retention', 'Follower Count',
+                                   fb_retention, 'followers', days, year, month)
+                self._store_metric('social_media_facebook', 'advocacy', 'Shares',
+                                   fb.get('advocacy', 0), 'shares', days, year, month)
+
+                # --- social_media_instagram ---
+                ig_retention = total_ig_follower_count
+                self._store_metric('social_media_instagram', 'awareness', 'Reach',
+                                   ig.get('reach', 0), 'reach', days, year, month)
+                self._store_metric('social_media_instagram', 'engagement', 'Engagement',
+                                   ig.get('engagement', 0), 'interactions', days, year, month)
+                self._store_metric('social_media_instagram', 'conversion', 'Link Clicks',
+                                   ig.get('conversion', 0), 'link_clicks', days, year, month)
+                self._store_metric('social_media_instagram', 'retention', 'Follower Count',
+                                   ig_retention, 'followers', days, year, month)
+                self._store_metric('social_media_instagram', 'advocacy', 'Shares',
+                                   ig.get('advocacy', 0), 'shares', days, year, month)
+
             print(f"\n{'='*70}")
             print(f"SOCIAL MEDIA DATA COLLECTION SUMMARY")
             print(f"{'='*70}")
-            print(f"Total months collected: {len(monthly_data)}")
-            print(f"\nMonthly breakdown:")
-            for (year, month), data in sorted(monthly_data.items()):
+            print(f"Total months collected: {len(all_months)}")
+            print(f"Facebook fan count: {total_fb_fan_count:,}")
+            print(f"Instagram followers: {total_ig_follower_count:,}")
+            for (year, month) in sorted(all_months):
+                fb = fb_monthly.get((year, month), {})
+                ig = ig_monthly.get((year, month), {})
                 print(f"\n  {year}-{month:02d}:")
-                print(f"    Reach:     {data.get('reach', 0):,}")
-                print(f"    Reactions: {data.get('reactions', 0):,}")
-                print(f"    Comments:  {data.get('comments', 0):,}")
-                print(f"    Shares:    {data.get('shares', 0):,}")
-                print(f"    Followers: {data.get('followers', 0):,}")
+                print(f"    FB  reach={fb.get('reach',0):,} engagement={fb.get('engagement',0):,} "
+                      f"conversion={fb.get('conversion',0):,} advocacy={fb.get('advocacy',0):,}")
+                print(f"    IG  reach={ig.get('reach',0):,} engagement={ig.get('engagement',0):,} "
+                      f"conversion={ig.get('conversion',0):,} advocacy={ig.get('advocacy',0):,}")
 
             print(f"\n{'='*70}")
-            print(f"  ✓ Stored {len(monthly_data)} months of social media data")
+            print(f"  Stored {len(all_months)} months across 3 mediums (total, facebook, instagram)")
             print(f"{'='*70}\n")
-            
+
         except Exception as e:
             print(f"  [ERROR] Social bulk collection failed: {e}")
             import traceback

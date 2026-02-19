@@ -8,6 +8,8 @@ let currentCustomer = null;
 let currentMetrics = null;
 let charts = {
     socialMedia: null,
+    socialMediaFacebook: null,
+    socialMediaInstagram: null,
     website: null,
     email: null
 };
@@ -400,48 +402,79 @@ function showNoCustomerMessage() {
 function renderDashboard() {
     document.getElementById('noCustomerMessage').style.display = 'none';
     document.getElementById('dashboardContent').style.display = 'block';
-    
+
     if (!currentMetrics) {
         showToast('No metrics available. Click Refresh to collect data.', 'info');
         return;
     }
-    
+
     // Render each section
     renderSocialMediaSection();
     renderWebsiteSection();
     renderEmailSection();
+    initSocialMediaTabs();
+}
+
+// ============================================================================
+// SOCIAL MEDIA - PLATFORM TABS
+// ============================================================================
+
+const SOCIAL_TABS = [
+    { id: 'social_media',           label: 'Total',     topPerformersId: 'topSocialPosts',          chartKey: 'socialMedia' },
+    { id: 'social_media_facebook',  label: 'Facebook',  topPerformersId: 'topSocialPostsFacebook',   chartKey: 'socialMediaFacebook' },
+    { id: 'social_media_instagram', label: 'Instagram', topPerformersId: 'topSocialPostsInstagram',  chartKey: 'socialMediaInstagram' }
+];
+
+function initSocialMediaTabs() {
+    const tabButtons = document.querySelectorAll('#socialMediaSection .platform-tab');
+    tabButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Activate tab button
+            tabButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            // Show the matching content panel
+            const tabId = btn.dataset.tab;
+            document.querySelectorAll('#socialMediaSection .platform-tab-content').forEach(panel => {
+                panel.classList.remove('active');
+            });
+            document.getElementById(`social-tab-${tabId}`).classList.add('active');
+        });
+    });
 }
 
 function renderSocialMediaSection() {
-    const metrics = currentMetrics.social_media || {};
-    const container = document.querySelector('#socialMediaSection .kpi-cards-container');
-    
-    container.innerHTML = '';
-    
-    // Create KPI cards for each journey stage
     const stages = ['awareness', 'engagement', 'conversion', 'retention', 'advocacy'];
-    
-    stages.forEach(stage => {
-        if (metrics[stage]) {
-            const stageData = metrics[stage];
-            const kpiName = Object.keys(stageData)[0];
-            const kpiData = stageData;
-            
-            const card = createKPICard(
-                'social_media',
-                stage,
-                kpiData.kpi_name || kpiName,
-                kpiData.kpi_value || 0,
-                kpiData.benchmark_value || 0,
-                kpiData.time_period_days || 30
-            );
-            
-            container.appendChild(card);
+
+    SOCIAL_TABS.forEach(tab => {
+        const metrics = currentMetrics[tab.id] || {};
+        const container = document.getElementById(`socialMediaKpis-${tab.id}`);
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        stages.forEach(stage => {
+            if (metrics[stage]) {
+                const kpiData = metrics[stage];
+                const card = createKPICard(
+                    tab.id,
+                    stage,
+                    kpiData.kpi_name || stage,
+                    kpiData.kpi_value || 0,
+                    kpiData.benchmark_value || 0,
+                    kpiData.time_period_days || 30
+                );
+                container.appendChild(card);
+            }
+        });
+
+        // Load top performers only for Total tab (social_media uses generic medium)
+        if (tab.id === 'social_media') {
+            loadTopPerformers('social_media', tab.topPerformersId);
+        } else {
+            loadTopPerformers(tab.id, tab.topPerformersId);
         }
     });
-    
-    // Load top performers
-    loadTopPerformers('social_media', 'topSocialPosts');
 }
 
 function renderWebsiteSection() {
@@ -591,14 +624,31 @@ async function loadHistoricalChart(medium, journeyStage, kpiName) {
 }
 
 function renderChart(medium, history, kpiName, trendline = null) {
-    const canvasId = medium === 'social_media' ? 'socialMediaChart' :
-                     medium === 'website' ? 'websiteChart' : 'emailChart';
+    const canvasMap = {
+        'social_media': 'socialMediaChart',
+        'social_media_facebook': 'socialMediaChartFacebook',
+        'social_media_instagram': 'socialMediaChartInstagram',
+        'website': 'websiteChart',
+        'email': 'emailChart'
+    };
+    const chartKeyMap = {
+        'social_media': 'socialMedia',
+        'social_media_facebook': 'socialMediaFacebook',
+        'social_media_instagram': 'socialMediaInstagram',
+        'website': 'website',
+        'email': 'email'
+    };
 
-    const ctx = document.getElementById(canvasId).getContext('2d');
+    const canvasId = canvasMap[medium] || 'socialMediaChart';
+    const chartKey = chartKeyMap[medium] || medium;
+
+    const canvasEl = document.getElementById(canvasId);
+    if (!canvasEl) return;
+    const ctx = canvasEl.getContext('2d');
 
     // Destroy existing chart
-    if (charts[medium === 'social_media' ? 'socialMedia' : medium]) {
-        charts[medium === 'social_media' ? 'socialMedia' : medium].destroy();
+    if (charts[chartKey]) {
+        charts[chartKey].destroy();
     }
 
     // Prepare data - use historical month/year, not recorded_at
@@ -728,7 +778,7 @@ function renderChart(medium, history, kpiName, trendline = null) {
         }
     });
     
-    charts[medium === 'social_media' ? 'socialMedia' : medium] = chart;
+    charts[chartKey] = chart;
 }
 
 // ============================================================================
@@ -791,9 +841,9 @@ async function exportToPDF() {
     showLoading(true);
     
     try {
-        // Collect chart images
+        // Collect chart images (all social media tab charts + website + email)
         const chartData = {};
-        
+
         Object.keys(charts).forEach(key => {
             if (charts[key]) {
                 chartData[key] = charts[key].toBase64Image();

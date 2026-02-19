@@ -1,14 +1,28 @@
 """
 Social Media Analytics - REAL METRICS ONLY
-Uses Facebook POST-level insights and Instagram account/media insights
-All metrics are actual API-provided values, NO estimates
+Separated Facebook and Instagram metrics per customer journey stage.
 
-Customer Journey Stages:
-1. Awareness - Reach/Impressions (from post and account insights)
-2. Engagement - Engaged users, reactions, comments
-3. Conversion - Profile views, website clicks, post clicks
-4. Retention - Follower count, saved posts
-5. Advocacy - Shares (from post fields)
+Per-platform metrics (all from working APIs):
+
+FACEBOOK (post-level insights + page fields):
+1. Reach      - post_impressions_unique (post insights)
+2. Engagement - reactions + comments (post fields)
+3. Conversion - post_clicks (post insights, closest link-click proxy)
+4. Retention  - fan_count (page object field)
+5. Advocacy   - shares (post fields)
+
+INSTAGRAM (account-level insights preferred; media-level for shares):
+1. Reach      - reach (account insights, period=day)
+2. Engagement - accounts_engaged (account insights, metric_type=total_value)
+3. Conversion - profile_links_taps (external link taps from bio, account insights)
+4. Retention  - follower_count (account insights)
+5. Advocacy   - shares aggregated from media insights per post
+
+NOTE on Instagram Conversion:
+  - profile_links_taps tracks external link taps from the bio/profile
+  - This is the closest account-level link-click metric available
+  - Falls back to 0 if not available for the account
+  - Instagram deprecated website_clicks/profile_views in Jan 2025
 """
 
 import requests
@@ -17,118 +31,138 @@ import json
 
 API_VERSION = "v24.0"
 
+
 # ============================================================================
-# FACEBOOK - POST-LEVEL INSIGHTS (THESE WORK!)
+# FACEBOOK - POST-LEVEL INSIGHTS
 # ============================================================================
 
-def get_facebook_post_insights_bulk(page_id, page_token, days_back=365):
+def get_facebook_metrics_bulk(page_id, page_token, days_back=365):
     """
-    Get Facebook POST-LEVEL insights (not page-level, those are deprecated)
-    
-    Returns REAL metrics by aggregating from individual posts:
-    - Reach (post_impressions_unique)
-    - Impressions (post_impressions)
-    - Engagement (post_engaged_users)
-    - Clicks (post_clicks)
-    - Reactions/Comments/Shares (from post fields)
-    
-    All metrics are REAL, not estimates!
+    Collect all Facebook metrics by aggregating from individual posts.
+
+    Returns monthly data keyed by "YYYY-MM" with these platform metrics:
+      reach        - post_impressions_unique (post insights)
+      engagement   - reactions + comments (post fields)
+      conversion   - post_clicks (post insights)
+      advocacy     - shares (post fields)
+
+    Fan count (retention) is returned as a separate top-level key.
+
+    All values are REAL API data, no estimates.
     """
-    print(f"  [Facebook] Fetching posts from last {days_back} days...")
-    
-    # Calculate timestamp
+    print(f"  [Facebook] Fetching posts for last {days_back} days...")
+
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days_back)
     since_timestamp = int(start_date.timestamp())
-    
+
     # Step 1: Get posts with engagement fields
     posts_url = f"https://graph.facebook.com/{API_VERSION}/{page_id}/posts"
     posts_params = {
-        'fields': 'id,created_time,shares,reactions.summary(true),comments.summary(true)',
+        'fields': 'id,message,created_time,shares,reactions.summary(true),comments.summary(true)',
         'since': since_timestamp,
         'access_token': page_token,
-        'limit': 100  # Max posts to analyze
+        'limit': 100
     }
-    
+
     try:
         posts_response = requests.get(posts_url, params=posts_params, timeout=30)
+        if posts_response.status_code != 200:
+            print(f"  [Facebook] Posts API error {posts_response.status_code}")
+            try:
+                print(f"  [Facebook] {json.dumps(posts_response.json(), indent=2)}")
+            except Exception:
+                print(f"  [Facebook] {posts_response.text}")
         posts_response.raise_for_status()
         posts_data = posts_response.json().get('data', [])
         print(f"  [Facebook] Found {len(posts_data)} posts")
     except Exception as e:
         print(f"  [Facebook] Failed to get posts: {e}")
         return {}
-    
-    # Step 2: Get POST-LEVEL insights for each post
+
     monthly_data = {}
-    
+    all_posts = []  # Per-post records for top performers
+
     for post in posts_data:
         try:
             post_id = post['id']
             created_time = post.get('created_time', '')
-            
             if not created_time:
                 continue
-            
-            # Parse date and determine month
+
             post_date = datetime.strptime(created_time[:10], '%Y-%m-%d')
             month_key = f"{post_date.year}-{post_date.month:02d}"
-            
-            # Initialize month bucket
+
             if month_key not in monthly_data:
                 monthly_data[month_key] = {
-                    'reach': 0,              # post_impressions_unique (REAL)
-                    'impressions': 0,        # post_impressions (REAL)
-                    'engaged_users': 0,      # post_engaged_users (REAL)
-                    'clicks': 0,             # post_clicks (REAL)
-                    'reactions': 0,          # From post fields (REAL)
-                    'comments': 0,           # From post fields (REAL)
-                    'shares': 0,             # From post fields (REAL)
+                    'reach': 0,
+                    'reactions': 0,
+                    'comments': 0,
+                    'clicks': 0,
+                    'shares': 0,
                     'posts': 0
                 }
-            
+
             monthly_data[month_key]['posts'] += 1
-            
-            # Get post fields (reactions, comments, shares)
+
+            # Post fields (reactions, comments, shares) - always work
             reactions = post.get('reactions', {}).get('summary', {}).get('total_count', 0)
             comments = post.get('comments', {}).get('summary', {}).get('total_count', 0)
             shares = post.get('shares', {}).get('count', 0)
-            
+
             monthly_data[month_key]['reactions'] += reactions
             monthly_data[month_key]['comments'] += comments
             monthly_data[month_key]['shares'] += shares
-            
-            # Get post-level insights (THE KEY PART - THESE STILL WORK!)
+
+            # Post-level insights (reach + clicks)
+            post_reach = 0
+            post_clicks = 0
             insights_url = f"https://graph.facebook.com/{API_VERSION}/{post_id}/insights"
             insights_params = {
-                'metric': 'post_impressions,post_impressions_unique,post_engaged_users,post_clicks',
+                'metric': 'post_impressions_unique,post_clicks',
                 'access_token': page_token
             }
-            
+
             insights_response = requests.get(insights_url, params=insights_params, timeout=10)
-            
+
             if insights_response.status_code == 200:
-                insights_data = insights_response.json().get('data', [])
-                
-                for insight in insights_data:
+                for insight in insights_response.json().get('data', []):
                     metric_name = insight.get('name')
                     values = insight.get('values', [{}])
                     value = values[0].get('value', 0) if values else 0
-                    
-                    if metric_name == 'post_impressions':
-                        monthly_data[month_key]['impressions'] += value
-                    elif metric_name == 'post_impressions_unique':
+
+                    if metric_name == 'post_impressions_unique':
                         monthly_data[month_key]['reach'] += value
-                    elif metric_name == 'post_engaged_users':
-                        monthly_data[month_key]['engaged_users'] += value
+                        post_reach = value
                     elif metric_name == 'post_clicks':
                         monthly_data[month_key]['clicks'] += value
-            
+                        post_clicks = value
+            else:
+                print(f"    [Facebook] Post insights error {insights_response.status_code} for post {post_id}")
+
+            # Track per-post data for top performers
+            message = post.get('message', '')
+            title = (message[:80] + '...') if len(message) > 80 else message
+            if not title:
+                title = f"Post {post_date.strftime('%b %d, %Y')}"
+            engagement = reactions + comments
+            all_posts.append({
+                'id': post_id,
+                'title': title,
+                'date': created_time[:10],
+                'month': month_key,
+                'reach': post_reach,
+                'engagement': engagement,
+                'clicks': post_clicks,
+                'shares': shares,
+            })
+
         except Exception as e:
-            print(f"  [Facebook] Warning: Failed to process post: {e}")
+            print(f"  [Facebook] Warning: failed to process post: {e}")
             continue
-    
-    # Get current fan count (still available as page field)
+
+    # Fan count (current, point-in-time - used for all months as retention)
+    fan_count = 0
     try:
         page_url = f"https://graph.facebook.com/{API_VERSION}/{page_id}"
         page_params = {
@@ -139,35 +173,46 @@ def get_facebook_post_insights_bulk(page_id, page_token, days_back=365):
         page_data = page_response.json()
         fan_count = page_data.get('fan_count', 0)
         print(f"  [Facebook] Fan count: {fan_count:,}")
-    except:
-        fan_count = 0
-    
-    result = {
+    except Exception as e:
+        print(f"  [Facebook] Could not retrieve fan count: {e}")
+
+    print(f"  [Facebook] Collected data for {len(monthly_data)} months, {len(all_posts)} posts")
+    return {
         'monthly_data': monthly_data,
-        'fan_count': fan_count
+        'fan_count': fan_count,
+        'all_posts': all_posts
     }
-    
-    print(f"  [Facebook] ✓ Collected data for {len(monthly_data)} months")
-    return result
 
 
 # ============================================================================
-# INSTAGRAM - ACCOUNT INSIGHTS (THESE STILL WORK!)
+# INSTAGRAM - ACCOUNT-LEVEL INSIGHTS (preferred source)
 # ============================================================================
 
-def get_instagram_insights_bulk(instagram_id, page_token, days_back=365):
+def get_instagram_account_metrics_bulk(instagram_id, page_token, days_back=365):
     """
-    Get Instagram ACCOUNT insights with supported metrics only
+    Collect Instagram account-level metrics in 30-day chunks.
 
-    DEPRECATED METRICS (removed Jan 2025):
-    - profile_views, website_clicks, phone_call_clicks, text_message_clicks
+    Metrics retrieved from /{ig-user-id}/insights:
+      reach             - unique accounts reached (daily, summed per month)
+      accounts_engaged  - unique accounts that engaged (daily, summed per month)
+      follower_count    - current followers (point-in-time)
 
-    SUPPORTED METRICS:
-    - Reach (daily aggregation)
-    - Impressions (daily aggregation)
-    - Follower count (current)
+    Instagram deprecated profile_views, website_clicks, phone_call_clicks
+    and text_message_clicks as of January 2025. The closest conversion proxy
+    at account level is profile_link_taps (external link taps from bio).
+    This function attempts to fetch it; falls back to 0 if unavailable.
 
-    Makes multiple 30-day API calls to build historical data
+    Returns:
+        {
+          'monthly_data': {
+              'YYYY-MM': {
+                  'reach': int,
+                  'accounts_engaged': int,
+                  'link_taps': int,   # profile_link_taps or 0
+              }
+          },
+          'follower_count': int
+        }
     """
     print(f"  [Instagram] Fetching account insights for last {days_back} days...")
 
@@ -175,85 +220,99 @@ def get_instagram_insights_bulk(instagram_id, page_token, days_back=365):
     start_date = end_date - timedelta(days=days_back)
 
     insights_url = f"https://graph.facebook.com/{API_VERSION}/{instagram_id}/insights"
-
-    # Supported metrics only (deprecated metrics removed)
-    # Note: impressions may require metric_type parameter similar to accounts_engaged
-    metrics = 'reach,impressions'
-
     monthly_data = {}
 
-    # Split into 30-day chunks
+    # --- reach and accounts_engaged (30-day chunks) ---
     current_chunk_end = end_date
     while current_chunk_end > start_date:
         current_chunk_start = max(current_chunk_end - timedelta(days=30), start_date)
-
-        print(f"    Fetching chunk: {current_chunk_start.strftime('%Y-%m-%d')} to {current_chunk_end.strftime('%Y-%m-%d')}")
+        print(f"    Chunk: {current_chunk_start.strftime('%Y-%m-%d')} to {current_chunk_end.strftime('%Y-%m-%d')}")
 
         params = {
-            'metric': metrics,
+            'metric': 'reach,accounts_engaged',
             'period': 'day',
             'access_token': page_token,
             'since': current_chunk_start.strftime('%Y-%m-%d'),
             'until': current_chunk_end.strftime('%Y-%m-%d'),
-            'metric_type': 'total_value'  # Required for some metrics as of 2025
+            'metric_type': 'total_value'
         }
 
         try:
             response = requests.get(insights_url, params=params, timeout=30)
-
-            # Check status and provide detailed error info if failed
             if response.status_code != 200:
-                print(f"    [API ERROR] Instagram API returned {response.status_code}")
-                print(f"    URL: {insights_url}")
-                print(f"    Params: {params}")
+                print(f"    [Instagram] Insights error {response.status_code}")
                 try:
-                    error_data = response.json()
-                    print(f"    Response body: {json.dumps(error_data, indent=2)}")
-                except:
-                    print(f"    Response text: {response.text}")
-
+                    print(f"    [Instagram] {json.dumps(response.json(), indent=2)}")
+                except Exception:
+                    print(f"    [Instagram] {response.text}")
             response.raise_for_status()
             data = response.json().get('data', [])
 
-            # Process each metric's daily values
             for metric_obj in data:
                 metric_name = metric_obj.get('name')
-                values = metric_obj.get('values', [])
-
-                for value_obj in values:
+                for value_obj in metric_obj.get('values', []):
                     value = value_obj.get('value', 0)
                     end_time = value_obj.get('end_time', '')
-
                     if not end_time:
                         continue
-
-                    # Parse date and determine month
                     date = datetime.strptime(end_time[:10], '%Y-%m-%d')
                     month_key = f"{date.year}-{date.month:02d}"
-
-                    # Initialize month bucket
                     if month_key not in monthly_data:
                         monthly_data[month_key] = {
                             'reach': 0,
-                            'impressions': 0
+                            'accounts_engaged': 0,
+                            'link_taps': 0
                         }
-
-                    # Aggregate by month
-                    if metric_name in monthly_data[month_key]:
+                    if metric_name in ('reach', 'accounts_engaged'):
                         monthly_data[month_key][metric_name] += value
 
         except Exception as e:
-            print(f"    [ERROR] Failed chunk {current_chunk_start.strftime('%Y-%m-%d')} to {current_chunk_end.strftime('%Y-%m-%d')}: {e}")
-            print(f"    Instagram ID: {instagram_id}, Token available: {bool(page_token)}")
-            import traceback
-            traceback.print_exc()
+            print(f"    [Instagram] Chunk error: {e}")
 
-        # Move to next chunk
         current_chunk_end = current_chunk_start - timedelta(days=1)
 
-    print(f"  [Instagram] ✓ Collected account data for {len(monthly_data)} months")
+    print(f"  [Instagram] Account insights collected for {len(monthly_data)} months")
 
-    # Get current follower count
+    # --- profile_link_taps (conversion proxy, attempt) ---
+    # This metric tracks external link taps from the Instagram profile/bio.
+    # It is only available for some accounts and within a 90-day window.
+    # We attempt a 30-day fetch; if it fails we log and continue with 0.
+    try:
+        link_params = {
+            'metric': 'profile_links_taps',
+            'period': 'day',
+            'access_token': page_token,
+            'since': (end_date - timedelta(days=30)).strftime('%Y-%m-%d'),
+            'until': end_date.strftime('%Y-%m-%d'),
+            'metric_type': 'total_value'
+        }
+        link_response = requests.get(insights_url, params=link_params, timeout=10)
+        if link_response.status_code == 200:
+            link_data = link_response.json().get('data', [])
+            for metric_obj in link_data:
+                if metric_obj.get('name') == 'profile_links_taps':
+                    for value_obj in metric_obj.get('values', []):
+                        value = value_obj.get('value', 0)
+                        end_time = value_obj.get('end_time', '')
+                        if not end_time:
+                            continue
+                        date = datetime.strptime(end_time[:10], '%Y-%m-%d')
+                        month_key = f"{date.year}-{date.month:02d}"
+                        if month_key not in monthly_data:
+                            monthly_data[month_key] = {
+                                'reach': 0,
+                                'accounts_engaged': 0,
+                                'link_taps': 0
+                            }
+                        monthly_data[month_key]['link_taps'] += value
+            print(f"  [Instagram] profile_links_taps collected")
+        else:
+            print(f"  [Instagram] profile_links_taps not available (status {link_response.status_code}) - using 0")
+    except Exception as e:
+        print(f"  [Instagram] Could not retrieve profile_link_taps: {e}")
+
+    # --- follower_count (current, point-in-time) ---
+    follower_count = 0
     try:
         follower_params = {
             'metric': 'follower_count',
@@ -261,16 +320,16 @@ def get_instagram_insights_bulk(instagram_id, page_token, days_back=365):
             'access_token': page_token
         }
         follower_response = requests.get(insights_url, params=follower_params, timeout=10)
-        follower_data = follower_response.json().get('data', [])
-        
-        if follower_data and follower_data[0].get('values'):
-            follower_count = follower_data[0]['values'][-1].get('value', 0)
-            print(f"  [Instagram] Follower count: {follower_count:,}")
+        if follower_response.status_code == 200:
+            follower_data = follower_response.json().get('data', [])
+            if follower_data and follower_data[0].get('values'):
+                follower_count = follower_data[0]['values'][-1].get('value', 0)
+                print(f"  [Instagram] Follower count: {follower_count:,}")
         else:
-            follower_count = 0
-    except:
-        follower_count = 0
-    
+            print(f"  [Instagram] follower_count not available (status {follower_response.status_code})")
+    except Exception as e:
+        print(f"  [Instagram] Could not retrieve follower_count: {e}")
+
     return {
         'monthly_data': monthly_data,
         'follower_count': follower_count
@@ -278,204 +337,190 @@ def get_instagram_insights_bulk(instagram_id, page_token, days_back=365):
 
 
 # ============================================================================
-# INSTAGRAM - MEDIA INSIGHTS (SAVED/SHARES PER POST)
+# INSTAGRAM - MEDIA INSIGHTS (for shares per post, advocacy)
 # ============================================================================
 
-def get_instagram_media_insights_bulk(instagram_id, page_token, days_back=365):
+def get_instagram_shares_bulk(instagram_id, page_token, days_back=365):
     """
-    Get Instagram MEDIA (post) insights for saved/shares
-    These are only available at media level, not account level
+    Aggregate Instagram shares from individual media posts.
+
+    The 'shares' metric is not available at Instagram account level,
+    so we fetch it per media item and aggregate into monthly buckets.
+
+    Returns:
+        {'monthly_data': {'YYYY-MM': {'shares': int}}}
     """
-    print(f"  [Instagram] Fetching media insights...")
-    
+    print(f"  [Instagram] Fetching media shares...")
+
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days_back)
     since_timestamp = int(start_date.timestamp())
-    
-    # Get media
+
     media_url = f"https://graph.facebook.com/{API_VERSION}/{instagram_id}/media"
     media_params = {
-        'fields': 'id,timestamp',
+        'fields': 'id,caption,timestamp,like_count,comments_count',
         'since': since_timestamp,
         'access_token': page_token,
         'limit': 100
     }
-    
+
     try:
         media_response = requests.get(media_url, params=media_params, timeout=30)
-
-        # Check status and provide detailed error info if failed
         if media_response.status_code != 200:
-            print(f"  [API ERROR] Instagram Media API returned {media_response.status_code}")
-            print(f"  URL: {media_url}")
-            print(f"  Instagram ID: {instagram_id}")
-            print(f"  Params: since={since_timestamp} ({start_date.strftime('%Y-%m-%d')})")
+            print(f"  [Instagram] Media API error {media_response.status_code}")
             try:
-                error_data = media_response.json()
-                print(f"  Response body: {json.dumps(error_data, indent=2)}")
-            except:
-                print(f"  Response text: {media_response.text}")
-
+                print(f"  [Instagram] {json.dumps(media_response.json(), indent=2)}")
+            except Exception:
+                print(f"  [Instagram] {media_response.text}")
         media_response.raise_for_status()
         media_items = media_response.json().get('data', [])
         print(f"  [Instagram] Found {len(media_items)} media items")
     except Exception as e:
-        print(f"  [ERROR] Failed to get Instagram media: {e}")
+        print(f"  [Instagram] Failed to get media: {e}")
         import traceback
         traceback.print_exc()
         return {}
-    
+
     monthly_data = {}
-    
+    all_posts = []  # Per-post records for top performers
+
     for media in media_items:
         try:
             media_id = media['id']
             timestamp = media.get('timestamp', '')
-            
             if not timestamp:
                 continue
-            
-            # Parse date
+
             media_date = datetime.strptime(timestamp[:10], '%Y-%m-%d')
             month_key = f"{media_date.year}-{media_date.month:02d}"
-            
-            # Initialize month bucket
+
             if month_key not in monthly_data:
-                monthly_data[month_key] = {
-                    'saved': 0,
-                    'shares': 0
-                }
-            
-            # Get media insights
+                monthly_data[month_key] = {'shares': 0}
+
+            like_count = media.get('like_count', 0)
+            comments_count = media.get('comments_count', 0)
+
+            post_shares = 0
             insights_url = f"https://graph.facebook.com/{API_VERSION}/{media_id}/insights"
             insights_params = {
-                'metric': 'saved,shares',
+                'metric': 'shares',
                 'access_token': page_token
             }
-            
+
             insights_response = requests.get(insights_url, params=insights_params, timeout=10)
-
             if insights_response.status_code == 200:
-                insights_data = insights_response.json().get('data', [])
-
-                for insight in insights_data:
-                    metric_name = insight.get('name')
-                    values = insight.get('values', [{}])
-                    value = values[0].get('value', 0) if values else 0
-
-                    if metric_name in monthly_data[month_key]:
-                        monthly_data[month_key][metric_name] += value
+                for insight in insights_response.json().get('data', []):
+                    if insight.get('name') == 'shares':
+                        values = insight.get('values', [{}])
+                        value = values[0].get('value', 0) if values else 0
+                        monthly_data[month_key]['shares'] += value
+                        post_shares = value
             else:
-                print(f"    [API ERROR] Instagram Media Insights returned {insights_response.status_code} for media {media_id}")
-                print(f"    URL: {insights_url}")
-                try:
-                    error_data = insights_response.json()
-                    print(f"    Response body: {json.dumps(error_data, indent=2)}")
-                except:
-                    print(f"    Response text: {insights_response.text}")
+                # Shares may not be available for all media types; skip silently
+                pass
+
+            # Track per-post data for top performers
+            caption = media.get('caption', '')
+            title = (caption[:80] + '...') if len(caption) > 80 else caption
+            if not title:
+                title = f"Post {media_date.strftime('%b %d, %Y')}"
+            engagement = like_count + comments_count
+            all_posts.append({
+                'id': media_id,
+                'title': title,
+                'date': timestamp[:10],
+                'month': month_key,
+                'engagement': engagement,
+                'likes': like_count,
+                'comments': comments_count,
+                'shares': post_shares,
+            })
 
         except Exception as e:
-            print(f"    [WARNING] Failed to process media {media.get('id', 'unknown')}: {e}")
+            print(f"    [Instagram] Warning: failed to process media {media.get('id', 'unknown')}: {e}")
             continue
-    
-    print(f"  [Instagram] ✓ Collected media data for {len(monthly_data)} months")
-    return {'monthly_data': monthly_data}
+
+    print(f"  [Instagram] Media shares collected for {len(monthly_data)} months, {len(all_posts)} posts")
+    return {'monthly_data': monthly_data, 'all_posts': all_posts}
 
 
 # ============================================================================
-# MAIN COLLECTION FUNCTION
+# MAIN COLLECTION FUNCTION - RETURNS PLATFORM-SEPARATED METRICS
 # ============================================================================
 
 def collect_social_media_real_metrics(page_id, page_token, instagram_id, days_back=365):
     """
-    Collect ALL real metrics from Facebook and Instagram
-    Maps to customer journey stages with REAL data only
-    
-    Returns monthly data with these REAL metrics:
-    
-    Awareness:
-    - Facebook reach (post_impressions_unique)
-    - Facebook impressions (post_impressions)
-    - Instagram reach
-    - Instagram impressions
-    
-    Engagement:
-    - Facebook engaged users (post_engaged_users)
-    - Facebook reactions
-    - Facebook comments
-    
-    Conversion:
-    - Facebook clicks (post_clicks)
-    # Note: Instagram profile_views and website_clicks deprecated Jan 2025
-    
-    Retention:
-    - Facebook fan count
-    - Instagram follower count
-    - Instagram saved posts
-    
-    Advocacy:
-    - Facebook shares
-    - Instagram shares
+    Collect all real metrics from Facebook and Instagram, separated by platform.
+
+    Returns a dict keyed by month ("YYYY-MM") where each month has:
+      'facebook': {
+          'reach':      int  (post_impressions_unique)
+          'engagement': int  (reactions + comments)
+          'conversion': int  (post_clicks)
+          'retention':  int  (fan_count - same for all months)
+          'advocacy':   int  (shares from post fields)
+      }
+      'instagram': {
+          'reach':      int  (account-level reach)
+          'engagement': int  (accounts_engaged)
+          'conversion': int  (profile_link_taps, or 0 if unavailable)
+          'retention':  int  (follower_count - same for all months)
+          'advocacy':   int  (shares aggregated from media)
+      }
+
+    Also includes top-level 'current_followers' for both platforms.
     """
-    print("\n" + "="*70)
-    print("COLLECTING REAL SOCIAL MEDIA METRICS")
-    print("="*70)
-    
+    print("\n" + "=" * 70)
+    print("COLLECTING REAL SOCIAL MEDIA METRICS (PLATFORM-SEPARATED)")
+    print("=" * 70)
+
     # Collect from all sources
-    fb_data = get_facebook_post_insights_bulk(page_id, page_token, days_back)
-    ig_account_data = get_instagram_insights_bulk(instagram_id, page_token, days_back)
-    ig_media_data = get_instagram_media_insights_bulk(instagram_id, page_token, days_back)
-    
-    # Merge by month
+    fb_data = get_facebook_metrics_bulk(page_id, page_token, days_back)
+    ig_account_data = get_instagram_account_metrics_bulk(instagram_id, page_token, days_back)
+    ig_shares_data = get_instagram_shares_bulk(instagram_id, page_token, days_back)
+
+    fb_monthly = fb_data.get('monthly_data', {})
+    ig_account_monthly = ig_account_data.get('monthly_data', {})
+    ig_shares_monthly = ig_shares_data.get('monthly_data', {})
+
     all_months = set()
-    all_months.update(fb_data.get('monthly_data', {}).keys())
-    all_months.update(ig_account_data.get('monthly_data', {}).keys())
-    all_months.update(ig_media_data.get('monthly_data', {}).keys())
-    
+    all_months.update(fb_monthly.keys())
+    all_months.update(ig_account_monthly.keys())
+    all_months.update(ig_shares_monthly.keys())
+
     result = {}
-    
+
     for month in sorted(all_months):
-        fb_month = fb_data.get('monthly_data', {}).get(month, {})
-        ig_account_month = ig_account_data.get('monthly_data', {}).get(month, {})
-        ig_media_month = ig_media_data.get('monthly_data', {}).get(month, {})
-        
+        fb = fb_monthly.get(month, {})
+        ig_acc = ig_account_monthly.get(month, {})
+        ig_shr = ig_shares_monthly.get(month, {})
+
         result[month] = {
-            # AWARENESS
-            'awareness': {
-                'reach': fb_month.get('reach', 0) + ig_account_month.get('reach', 0),
-                'impressions': fb_month.get('impressions', 0) + ig_account_month.get('impressions', 0)
+            'facebook': {
+                'reach': fb.get('reach', 0),
+                'engagement': fb.get('reactions', 0) + fb.get('comments', 0),
+                'conversion': fb.get('clicks', 0),
+                'retention': fb_data.get('fan_count', 0),
+                'advocacy': fb.get('shares', 0)
             },
-            # ENGAGEMENT
-            'engagement': {
-                'engaged_users': fb_month.get('engaged_users', 0),
-                'reactions': fb_month.get('reactions', 0),
-                'comments': fb_month.get('comments', 0)
-            },
-            # CONVERSION
-            'conversion': {
-                'clicks': fb_month.get('clicks', 0)
-                # Note: Instagram profile_views and website_clicks deprecated Jan 2025
-            },
-            # RETENTION
-            'retention': {
-                'saved': ig_media_month.get('saved', 0)
-            },
-            # ADVOCACY
-            'advocacy': {
-                'shares': fb_month.get('shares', 0) + ig_media_month.get('shares', 0)
+            'instagram': {
+                'reach': ig_acc.get('reach', 0),
+                'engagement': ig_acc.get('accounts_engaged', 0),
+                'conversion': ig_acc.get('link_taps', 0),
+                'retention': ig_account_data.get('follower_count', 0),
+                'advocacy': ig_shr.get('shares', 0)
             }
         }
-    
-    # Add current follower/fan counts
+
     result['current_followers'] = {
         'facebook_fans': fb_data.get('fan_count', 0),
         'instagram_followers': ig_account_data.get('follower_count', 0)
     }
-    
-    print("\n" + "="*70)
-    print(f"✓ COLLECTION COMPLETE - {len(result)-1} months of REAL data")
-    print("="*70)
-    
+
+    print("\n" + "=" * 70)
+    print(f"COLLECTION COMPLETE - {len(result) - 1} months of REAL data")
+    print("=" * 70)
+
     return result
 
 
@@ -486,26 +531,21 @@ def collect_social_media_real_metrics(page_id, page_token, instagram_id, days_ba
 def get_all_pages_and_instagram_accounts(system_token):
     """
     Get all Facebook pages accessible by the system user token
-    and their linked Instagram Business accounts
+    and their linked Instagram Business accounts.
 
-    Returns: List of account dictionaries with page and Instagram info
+    Returns: List of account dictionaries with page and Instagram info.
     """
     url = f"https://graph.facebook.com/{API_VERSION}/me/accounts"
     params = {'access_token': system_token}
 
     try:
         response = requests.get(url, params=params, timeout=30)
-
-        # Check status and provide detailed error info if failed
         if response.status_code != 200:
-            print(f"[API ERROR] Facebook Pages API returned {response.status_code}")
-            print(f"URL: {url}")
+            print(f"[Facebook] Pages API error {response.status_code}")
             try:
-                error_data = response.json()
-                print(f"Response body: {json.dumps(error_data, indent=2)}")
-            except:
-                print(f"Response text: {response.text}")
-
+                print(f"[Facebook] {json.dumps(response.json(), indent=2)}")
+            except Exception:
+                print(f"[Facebook] {response.text}")
         response.raise_for_status()
         pages_data = response.json().get('data', [])
     except requests.exceptions.RequestException as e:
@@ -520,49 +560,41 @@ def get_all_pages_and_instagram_accounts(system_token):
         page_token = page.get('access_token')
         page_name = page.get('name')
 
-        # Validate we have required fields
         if not page_id or not page_token or not page_name:
-            print(f"  [WARNING] Incomplete page data received: {page}")
+            print(f"  [WARNING] Incomplete page data: {page}")
             continue
 
-        # Debug: Show token info (masked for security)
-        token_preview = page_token[:20] + '...' + page_token[-10:] if len(page_token) > 30 else 'TOKEN_TOO_SHORT'
+        token_preview = (page_token[:20] + '...' + page_token[-10:]
+                         if len(page_token) > 30 else 'TOKEN_TOO_SHORT')
         print(f"  Page '{page_name}' (ID: {page_id})")
-        print(f"    Token preview: {token_preview}")
-        print(f"    Token type: {'Long-lived' if len(page_token) > 200 else 'Short-lived or System token'}")
+        print(f"    Token: {token_preview}")
 
-        # Get Instagram account if linked
+        # Get linked Instagram account
         ig_url = f"https://graph.facebook.com/{API_VERSION}/{page_id}"
         ig_params = {
             'fields': 'instagram_business_account,fan_count,followers_count',
             'access_token': system_token
         }
 
+        instagram_id = None
+        fan_count = 0
+        followers_count = 0
+
         try:
             ig_response = requests.get(ig_url, params=ig_params, timeout=30)
-
-            # Check status and provide detailed error info if failed
             if ig_response.status_code != 200:
-                print(f"  [API ERROR] Facebook Page Details API returned {ig_response.status_code} for page '{page_name}'")
-                print(f"  URL: {ig_url}")
-                print(f"  Page ID: {page_id}")
+                print(f"  [WARNING] Page details error {ig_response.status_code} for '{page_name}'")
                 try:
-                    error_data = ig_response.json()
-                    print(f"  Response body: {json.dumps(error_data, indent=2)}")
-                except:
-                    print(f"  Response text: {ig_response.text}")
-
+                    print(f"  [WARNING] {json.dumps(ig_response.json(), indent=2)}")
+                except Exception:
+                    pass
             ig_response.raise_for_status()
             ig_data = ig_response.json()
-
             instagram_id = ig_data.get('instagram_business_account', {}).get('id')
             fan_count = ig_data.get('fan_count', 0)
             followers_count = ig_data.get('followers_count', 0)
         except requests.exceptions.RequestException as e:
-            print(f"  [WARNING] Failed to fetch Instagram account for page '{page_name}': {e}")
-            instagram_id = None
-            fan_count = 0
-            followers_count = 0
+            print(f"  [WARNING] Failed to get Instagram for '{page_name}': {e}")
 
         accounts.append({
             'page_name': page_name,
@@ -576,321 +608,68 @@ def get_all_pages_and_instagram_accounts(system_token):
     return accounts
 
 
+# ============================================================================
+# LEGACY FUNCTIONS - kept for backward compatibility with data_collector.py
+# These are called by collect_social_bulk in data_collector.py and will be
+# replaced when data_collector.py is updated to use the new separated approach.
+# ============================================================================
+
 def get_facebook_posts_engagement(page_id, page_token, days_back=365):
     """
-    Get Facebook posts and aggregate engagement metrics
-    Uses Posts API (not deprecated Page Insights) for 12-month historical data
-
-    2026 UPDATE: Page Insights heavily deprecated - using Posts for engagement
-
-    REQUIRED PERMISSIONS (System User Token must have these):
-    - pages_show_list: To list pages accessible by the app
-    - pages_read_engagement: To read posts, reactions, comments, shares
-    - pages_read_user_content: To read user-generated content on pages
-
-    IMPORTANT: The page_token passed to this function is obtained from
-    /me/accounts endpoint and inherits the permissions from the System User Token.
-    If you get permission errors, verify:
-    1. Your System User Token has the permissions listed above
-    2. The permissions are assigned in Meta Business Suite > Business Settings > System Users
-    3. The pages are connected to your Business Manager account
-
-    Maps to journey stages:
-    - Awareness: Post reach/views (from post insights if available)
-    - Engagement: Total reactions across all posts
-    - Response: Comments on posts
-    - Retention: Page likes (from page object)
-    - Advocacy: Shares of posts
-
-    Args:
-        page_id: Facebook page ID
-        page_token: Page access token (from /me/accounts)
-        days_back: Number of days of historical data
-
-    Returns: Dictionary with monthly_data aggregated by month
+    Legacy wrapper - returns Facebook post engagement data.
+    Now internally uses get_facebook_metrics_bulk.
     """
-    print(f"  [Facebook] Fetching posts for last {days_back} days...")
-
-    # Debug: Verify we're using a page access token
-    token_preview = page_token[:20] + '...' + page_token[-10:] if len(page_token) > 30 else 'TOKEN_TOO_SHORT'
-    print(f"  Using token: {token_preview}")
-    print(f"  Page ID: {page_id}")
-
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days_back)
-
-    # Get all posts in the date range
-    url = f"https://graph.facebook.com/{API_VERSION}/{page_id}/posts"
-
-    # Use access_token as query parameter (matches Graph API Explorer)
-    # Required permissions: pages_read_engagement, pages_show_list
-    params = {
-        'fields': 'id,created_time,message,reactions.summary(true),comments.summary(true),shares',
-        'since': start_date.strftime('%Y-%m-%d'),
-        'until': end_date.strftime('%Y-%m-%d'),
-        'limit': 100,
-        'access_token': page_token
-    }
-
-    monthly_data = {}
-    posts_fetched = 0
-
-    try:
-        # First request
-        response = requests.get(url, params=params, timeout=30)
-
-        # Check status and provide detailed error info if failed
-        if response.status_code != 200:
-            print(f"  [API ERROR] Facebook API returned {response.status_code}")
-            print(f"  URL: {url}")
-            print(f"  Page ID: {page_id}")
-            print(f"  Token being used: {token_preview}")
-            try:
-                error_data = response.json()
-                print(f"  Response body: {json.dumps(error_data, indent=2)}")
-                # Check for permission errors
-                if 'error' in error_data:
-                    error_obj = error_data['error']
-                    if error_obj.get('code') in [200, 10]:  # Permission errors
-                        print(f"\n  [PERMISSION ERROR] The page access token is missing required permissions!")
-                        print(f"  Required permissions: pages_read_engagement, pages_show_list")
-                        print(f"  Error message: {error_obj.get('message')}")
-                        print(f"\n  SOLUTION: Make sure your System User Token has these permissions:")
-                        print(f"    - pages_read_engagement")
-                        print(f"    - pages_show_list")
-                        print(f"    - pages_read_user_content")
-                        print(f"  The page tokens inherit permissions from the System User Token.\n")
-            except:
-                print(f"  Response text: {response.text}")
-
-        response.raise_for_status()
-        data = response.json()
-
-        posts = data.get('data', [])
-        posts_fetched += len(posts)
-
-        for post in posts:
-                # Parse post date
-                created_time = post.get('created_time')
-                if not created_time:
-                    continue
-
-                post_date = datetime.strptime(created_time[:10], '%Y-%m-%d')
-                month_key = f"{post_date.year}-{post_date.month:02d}"
-
-                # Initialize month bucket
-                if month_key not in monthly_data:
-                    monthly_data[month_key] = {
-                        'reactions': 0,     # Engagement metric
-                        'comments': 0,      # Response metric
-                        'shares': 0,        # Advocacy metric
-                        'posts_count': 0    # For averaging
-                    }
-
-                # Aggregate engagement from post fields (not insights - these always work!)
-                reactions_data = post.get('reactions', {}).get('summary', {})
-                comments_data = post.get('comments', {}).get('summary', {})
-                shares_count = post.get('shares', {}).get('count', 0)
-
-                monthly_data[month_key]['reactions'] += reactions_data.get('total_count', 0)
-                monthly_data[month_key]['comments'] += comments_data.get('total_count', 0)
-                monthly_data[month_key]['shares'] += shares_count
-                monthly_data[month_key]['posts_count'] += 1
-
-        # Check for next page and continue pagination
-        while data.get('paging', {}).get('next'):
-            next_url = data['paging']['next']
-            # Next URL already includes access_token
-            response = requests.get(next_url, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-
-            posts = data.get('data', [])
-            posts_fetched += len(posts)
-
-            for post in posts:
-                created_time = post.get('created_time')
-                if not created_time:
-                    continue
-
-                post_date = datetime.strptime(created_time[:10], '%Y-%m-%d')
-                month_key = f"{post_date.year}-{post_date.month:02d}"
-
-                if month_key not in monthly_data:
-                    monthly_data[month_key] = {
-                        'reactions': 0,
-                        'comments': 0,
-                        'shares': 0,
-                        'posts_count': 0
-                    }
-
-                reactions_data = post.get('reactions', {}).get('summary', {})
-                comments_data = post.get('comments', {}).get('summary', {})
-                shares_count = post.get('shares', {}).get('count', 0)
-
-                monthly_data[month_key]['reactions'] += reactions_data.get('total_count', 0)
-                monthly_data[month_key]['comments'] += comments_data.get('total_count', 0)
-                monthly_data[month_key]['shares'] += shares_count
-                monthly_data[month_key]['posts_count'] += 1
-
-        print(f"  [Facebook] ✓ Processed {posts_fetched} posts across {len(monthly_data)} months")
-
-        # Debug: Show detailed breakdown per month
-        print(f"  [Facebook] Monthly breakdown:")
-        for month_key in sorted(monthly_data.keys()):
-            month_data = monthly_data[month_key]
-            print(f"    {month_key}: {month_data['posts_count']} posts, "
-                  f"Reactions: {month_data['reactions']}, "
-                  f"Comments: {month_data['comments']}, "
-                  f"Shares: {month_data['shares']}")
-
-    except requests.exceptions.RequestException as e:
-        print(f"  [Facebook] Error fetching posts: {e}")
-        print(f"  Page ID: {page_id}, Token available: {bool(page_token)}")
-        import traceback
-        traceback.print_exc()
-
-    return {'monthly_data': monthly_data}
+    fb_data = get_facebook_metrics_bulk(page_id, page_token, days_back)
+    # Reformat to match legacy expected structure
+    legacy_monthly = {}
+    for month_key, data in fb_data.get('monthly_data', {}).items():
+        legacy_monthly[month_key] = {
+            'reactions': data.get('reactions', 0),
+            'comments': data.get('comments', 0),
+            'shares': data.get('shares', 0),
+            'posts_count': data.get('posts', 0)
+        }
+    return {'monthly_data': legacy_monthly}
 
 
 def get_instagram_account_insights(instagram_id, page_token, days_back=7):
     """
-    Get Instagram account-level insights with daily period granularity
-    Makes multiple 30-day API calls to build historical data up to 12 months
-
-    DEPRECATED METRICS (removed as of Jan 2025):
-    - profile_views, website_clicks, phone_call_clicks, text_message_clicks
-    - impressions (not supported - replaced with accounts_engaged)
-
-    SUPPORTED METRICS:
-    - reach, accounts_engaged, follower_count
-
-    Args:
-        instagram_id: Instagram Business Account ID
-        page_token: Page access token
-        days_back: Number of days of historical data (will split into 30-day chunks)
-
-    Returns: Dictionary of account insights with daily values across entire period
+    Legacy wrapper - returns Instagram account insights in the old format.
+    Now internally uses get_instagram_account_metrics_bulk.
     """
-    insights = {}
+    ig_data = get_instagram_account_metrics_bulk(instagram_id, page_token, days_back)
+    monthly = ig_data.get('monthly_data', {})
 
-    url = f"https://graph.facebook.com/{API_VERSION}/{instagram_id}/insights"
+    # Build legacy format: lists of {end_time, value} dicts
+    reach_values = []
+    accounts_engaged_values = []
 
-    # Supported metrics only (deprecated metrics removed Jan 2025)
-    # impressions is NOT supported - using accounts_engaged instead
-    daily_metrics = ['reach', 'accounts_engaged']
+    for month_key, m in monthly.items():
+        # Use first day of month as synthetic end_time
+        year, month = month_key.split('-')
+        end_time = f"{year}-{month}-01T00:00:00+0000"
+        reach_values.append({'end_time': end_time, 'value': m.get('reach', 0)})
+        accounts_engaged_values.append({'end_time': end_time, 'value': m.get('accounts_engaged', 0)})
 
-    # Calculate how many 30-day chunks we need
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days_back)
+    result = {}
+    if reach_values:
+        result['reach'] = reach_values
+    if accounts_engaged_values:
+        result['accounts_engaged'] = accounts_engaged_values
 
-    # Split into 30-day chunks (Instagram API limit)
-    current_chunk_end = end_date
-    all_values = {metric: [] for metric in daily_metrics}
+    # Add follower count
+    follower_count = ig_data.get('follower_count', 0)
+    if follower_count:
+        result['follower_count'] = [{'end_time': '', 'value': follower_count}]
 
-    while current_chunk_end > start_date:
-        current_chunk_start = max(current_chunk_end - timedelta(days=30), start_date)
-
-        print(f"    Fetching Instagram {current_chunk_start.strftime('%Y-%m-%d')} to {current_chunk_end.strftime('%Y-%m-%d')}")
-
-        for metric in daily_metrics:
-            try:
-                params = {
-                    'metric': metric,
-                    'period': 'day',
-                    'since': current_chunk_start.strftime('%Y-%m-%d'),
-                    'until': current_chunk_end.strftime('%Y-%m-%d'),
-                    'access_token': page_token
-                }
-
-                # accounts_engaged requires metric_type parameter as of 2025
-                if metric == 'accounts_engaged':
-                    params['metric_type'] = 'total_value'
-
-                response = requests.get(url, params=params, timeout=30)
-
-                # Check status and provide detailed error info if failed
-                if response.status_code != 200:
-                    print(f"      [API ERROR] Instagram API returned {response.status_code} for metric '{metric}'")
-                    print(f"      URL: {url}")
-                    print(f"      Params: metric={metric}, period=day, since={current_chunk_start.strftime('%Y-%m-%d')}, until={current_chunk_end.strftime('%Y-%m-%d')}")
-                    print(f"      Instagram ID: {instagram_id}")
-                    try:
-                        error_data = response.json()
-                        print(f"      Response body: {json.dumps(error_data, indent=2)}")
-                    except:
-                        print(f"      Response text: {response.text}")
-
-                response.raise_for_status()
-                data = response.json().get('data', [])
-                if data:
-                    values = data[0].get('values', [])
-                    all_values[metric].extend(values)
-            except requests.exceptions.RequestException as e:
-                print(f"      [ERROR] Failed to fetch Instagram metric '{metric}': {e}")
-                import traceback
-                traceback.print_exc()
-
-        # Move to next chunk (go backwards in time)
-        current_chunk_end = current_chunk_start - timedelta(days=1)
-
-    # Store aggregated values
-    for metric in daily_metrics:
-        if all_values[metric]:
-            insights[metric] = all_values[metric]
-
-    # Debug: Show summary of collected data
-    print(f"  [Instagram] Collected {len(all_values.get('reach', []))} reach data points")
-    print(f"  [Instagram] Collected {len(all_values.get('accounts_engaged', []))} accounts_engaged data points")
-
-    # Debug: Show sample data point structure
-    if all_values.get('reach') and len(all_values['reach']) > 0:
-        print(f"  [Instagram] Sample reach data point: {all_values['reach'][0]}")
-
-    # Follower count (lifetime metric, returns current value only)
-    try:
-        params = {
-            'metric': 'follower_count',
-            'period': 'day',
-            'access_token': page_token
-        }
-        response = requests.get(url, params=params, timeout=30)
-
-        # Check status and provide detailed error info if failed
-        if response.status_code != 200:
-            print(f"      [API ERROR] Instagram API returned {response.status_code} for follower_count")
-            print(f"      URL: {url}")
-            print(f"      Instagram ID: {instagram_id}")
-            try:
-                error_data = response.json()
-                print(f"      Response body: {json.dumps(error_data, indent=2)}")
-            except:
-                print(f"      Response text: {response.text}")
-
-        response.raise_for_status()
-        data = response.json().get('data', [])
-        if data:
-            insights['follower_count'] = data[0].get('values', [])
-    except requests.exceptions.RequestException as e:
-        print(f"  [ERROR] Failed to fetch Instagram follower_count: {e}")
-        import traceback
-        traceback.print_exc()
-
-    return insights
+    return result
 
 
 def get_instagram_media_insights(instagram_id, page_token, limit=20):
     """
-    Get Instagram media (posts) and their insights
-
-    Args:
-        instagram_id: Instagram Business Account ID
-        page_token: Page access token
-        limit: Number of recent posts to retrieve
-
-    Returns: List of media with insights
+    Get Instagram media (posts) and their insights.
+    Returns a list of recent media items with insight data.
     """
-    # Get recent media
     media_url = f"https://graph.facebook.com/{API_VERSION}/{instagram_id}/media"
     media_params = {
         'fields': 'id,caption,media_type,timestamp,permalink',
@@ -900,22 +679,16 @@ def get_instagram_media_insights(instagram_id, page_token, limit=20):
 
     try:
         media_response = requests.get(media_url, params=media_params, timeout=30)
-
-        # Check status and provide detailed error info if failed
         if media_response.status_code != 200:
-            print(f"  [API ERROR] Instagram Media API returned {media_response.status_code}")
-            print(f"  URL: {media_url}")
-            print(f"  Instagram ID: {instagram_id}")
+            print(f"  [Instagram] Media API error {media_response.status_code}")
             try:
-                error_data = media_response.json()
-                print(f"  Response body: {json.dumps(error_data, indent=2)}")
-            except:
-                print(f"  Response text: {media_response.text}")
-
+                print(f"  [Instagram] {json.dumps(media_response.json(), indent=2)}")
+            except Exception:
+                pass
         media_response.raise_for_status()
         media_list = media_response.json().get('data', [])
     except requests.exceptions.RequestException as e:
-        print(f"  [ERROR] Failed to fetch Instagram media: {e}")
+        print(f"  [ERROR] Failed to get Instagram media: {e}")
         import traceback
         traceback.print_exc()
         return []
@@ -923,14 +696,14 @@ def get_instagram_media_insights(instagram_id, page_token, limit=20):
     media_insights = []
     for media in media_list:
         media_id = media['id']
-
-        # Get insights for this media
         insights_url = f"https://graph.facebook.com/{API_VERSION}/{media_id}/insights"
         metrics = ['reach', 'saved', 'likes', 'comments', 'shares', 'total_interactions']
 
         post_data = {
             'id': media_id,
-            'caption': media.get('caption', '')[:100] + '...' if media.get('caption') and len(media.get('caption', '')) > 100 else media.get('caption', ''),
+            'caption': (media.get('caption', '')[:100] + '...'
+                        if media.get('caption') and len(media.get('caption', '')) > 100
+                        else media.get('caption', '')),
             'media_type': media.get('media_type'),
             'timestamp': media.get('timestamp'),
             'permalink': media.get('permalink'),
@@ -941,25 +714,14 @@ def get_instagram_media_insights(instagram_id, page_token, limit=20):
             try:
                 params = {'metric': metric, 'access_token': page_token}
                 response = requests.get(insights_url, params=params, timeout=10)
-
-                # Check status and provide detailed error info if failed
-                if response.status_code != 200:
-                    print(f"    [API ERROR] Instagram Media Insights API returned {response.status_code} for metric '{metric}'")
-                    print(f"    URL: {insights_url}")
-                    print(f"    Media ID: {media_id}")
-                    try:
-                        error_data = response.json()
-                        print(f"    Response body: {json.dumps(error_data, indent=2)}")
-                    except:
-                        print(f"    Response text: {response.text}")
-
-                response.raise_for_status()
-                data = response.json().get('data', [])
-                if data:
-                    values = data[0].get('values', [{}])
-                    post_data['insights'][metric] = values[0].get('value') if values else 0
-            except requests.exceptions.RequestException as e:
-                print(f"    [WARNING] Failed to fetch Instagram media metric '{metric}' for media {media_id}: {e}")
+                if response.status_code == 200:
+                    data = response.json().get('data', [])
+                    if data:
+                        values = data[0].get('values', [{}])
+                        post_data['insights'][metric] = values[0].get('value') if values else 0
+                else:
+                    post_data['insights'][metric] = 0
+            except requests.exceptions.RequestException:
                 post_data['insights'][metric] = 0
 
         media_insights.append(post_data)
@@ -968,11 +730,10 @@ def get_instagram_media_insights(instagram_id, page_token, limit=20):
 
 
 if __name__ == '__main__':
-    # Test with your credentials
     import sys
 
     if len(sys.argv) < 4:
-        print("Usage: python real_metrics.py PAGE_ID PAGE_TOKEN INSTAGRAM_ID")
+        print("Usage: python social_media_analytics.py PAGE_ID PAGE_TOKEN INSTAGRAM_ID")
         sys.exit(1)
 
     page_id = sys.argv[1]
@@ -981,9 +742,8 @@ if __name__ == '__main__':
 
     data = collect_social_media_real_metrics(page_id, page_token, instagram_id, days_back=30)
 
-    # Print summary
     print("\nSUMMARY BY MONTH:\n")
     for month in sorted([k for k in data.keys() if k != 'current_followers']):
-        print(f"{month}:")
-        for stage, metrics in data[month].items():
-            print(f"  {stage}: {metrics}")
+        print(f"\n{month}:")
+        for platform, metrics in data[month].items():
+            print(f"  {platform}: {metrics}")

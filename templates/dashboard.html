@@ -76,25 +76,71 @@
             <section class="medium-section" id="socialMediaSection">
                 <div class="section-outer">
                     <h2 class="section-title">SOCIAL MEDIA</h2>
-                    <div class="section-inner">
-                        <div class="kpi-cards-container">
-                            <!-- Social Media KPI Cards will be inserted here -->
-                        </div>
-                        
-                        <div class="charts-row">
-                            <div class="chart-container">
-                                <h3 class="chart-title">Performance vs Benchmark</h3>
-                                <canvas id="socialMediaChart"></canvas>
+
+                    <!-- Platform Tabs -->
+                    <div class="platform-tabs">
+                        <button class="platform-tab active" data-tab="social_media" data-section="social">Total</button>
+                        <button class="platform-tab" data-tab="social_media_facebook" data-section="social">Facebook</button>
+                        <button class="platform-tab" data-tab="social_media_instagram" data-section="social">Instagram</button>
+                    </div>
+
+                    <!-- Total Tab -->
+                    <div class="platform-tab-content active" id="social-tab-social_media">
+                        <div class="section-inner">
+                            <div class="kpi-cards-container" id="socialMediaKpis-social_media">
+                                <!-- Combined KPI Cards -->
                             </div>
-                            
-                            <div class="top-performers-container">
-                                <h3 class="chart-title">Top Performing Posts</h3>
-                                <div id="topSocialPosts" class="top-performers-list">
-                                    <!-- Top posts will be inserted here -->
+                            <div class="charts-row">
+                                <div class="chart-container">
+                                    <h3 class="chart-title">Performance vs Benchmark</h3>
+                                    <canvas id="socialMediaChart"></canvas>
+                                </div>
+                                <div class="top-performers-container">
+                                    <h3 class="chart-title">Top Performing Posts</h3>
+                                    <div id="topSocialPosts" class="top-performers-list"></div>
                                 </div>
                             </div>
                         </div>
                     </div>
+
+                    <!-- Facebook Tab -->
+                    <div class="platform-tab-content" id="social-tab-social_media_facebook">
+                        <div class="section-inner">
+                            <div class="kpi-cards-container" id="socialMediaKpis-social_media_facebook">
+                                <!-- Facebook KPI Cards -->
+                            </div>
+                            <div class="charts-row">
+                                <div class="chart-container">
+                                    <h3 class="chart-title">Performance vs Benchmark</h3>
+                                    <canvas id="socialMediaChartFacebook"></canvas>
+                                </div>
+                                <div class="top-performers-container">
+                                    <h3 class="chart-title">Top Performing Posts</h3>
+                                    <div id="topSocialPostsFacebook" class="top-performers-list"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Instagram Tab -->
+                    <div class="platform-tab-content" id="social-tab-social_media_instagram">
+                        <div class="section-inner">
+                            <div class="kpi-cards-container" id="socialMediaKpis-social_media_instagram">
+                                <!-- Instagram KPI Cards -->
+                            </div>
+                            <div class="charts-row">
+                                <div class="chart-container">
+                                    <h3 class="chart-title">Performance vs Benchmark</h3>
+                                    <canvas id="socialMediaChartInstagram"></canvas>
+                                </div>
+                                <div class="top-performers-container">
+                                    <h3 class="chart-title">Top Performing Posts</h3>
+                                    <div id="topSocialPostsInstagram" class="top-performers-list"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </section>
 
