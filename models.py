@@ -408,154 +408,293 @@ class TopPerformer:
             return []
 
 
-# Industry benchmarks for startup companies
+# ============================================================================
+# Industry benchmarks — per 30-day month unless noted as LIFETIME
+#
+# Basis for social media numbers (Hootsuite 2025, Socialinsider 2024,
+# Social Status 2024):
+#   Nano-pages (<1 K followers) FB reach ≈ 5–7% per post × 8 posts/month
+#   Nano-pages IG reach ≈ 8–15% per post × 8 posts/month
+#   FB engagement ≈ 1.9% of reached accounts  (Hootsuite healthcare 2025)
+#   IG engagement ≈ 3.7% of reached accounts  (Hootsuite healthcare 2025)
+#
+# Basis for email numbers (Mailchimp 2024, Paubox 2024, MailerLite 2025):
+#   Healthcare open rate ≈ 34–38%, click rate ≈ 1.8–2.5%
+#   Dental    open rate ≈ 35–40%, click rate ≈ 2.0–2.8%
+#   Medical   open rate ≈ 33–37%, click rate ≈ 1.7–2.3%
+#   All-industry open rate ≈ 21%, click rate ≈ 2.6%  (Mailchimp)
+#   Unsubscribe rate ≈ 0.06–0.20% per send  (Paubox healthcare empirical)
+#   Email replies: ~0.3–0.8% of opens  (practitioner-reported)
+#
+# Basis for website numbers (9Clouds, FirstPageSage 2024):
+#   Small local practice organic sessions ≈ 250–600/month
+#   Returning user rate ≈ 18–25%
+#   Referral sessions ≈ 5–12% of total sessions
+#   Form submit rate: healthcare 2.0–2.5%, dental 2.5–3.5%, medical 1.8–2.4%
+#
+# Social Media:
+#   reach, interactions, link_clicks, shares  → monthly totals
+#   followers                                 → LIFETIME total (point-in-time)
+#
+# Website (all monthly):
+#   sessions, users, returning_users, referrals, form_submits → counts/month
+#   pages_per_session, avg_session_duration (seconds)         → averages
+#   form_submit_rate, retention_rate                          → percentages
+#
+# Email (all monthly):
+#   emails_sent/delivered/opens/clicks/replies/unsubscribes   → counts/month
+#   deliverability_score                                      → percentage
+# ============================================================================
 INDUSTRY_BENCHMARKS = {
+    # ------------------------------------------------------------------ #
+    #  Healthcare — general practice / clinic  (50–200 patients)
+    #  ~500 FB followers, ~400 IG followers assumed for raw-number calc
+    # ------------------------------------------------------------------ #
     'healthcare': {
         'social_media': {
-            'awareness': {'reach': 1000, 'impressions': 2000},
-            'engagement': {'engagement_rate': 2.5, 'interactions': 50},
-            'conversion': {'link_clicks': 20, 'cta_clicks': 10},
-            'retention': {'follower_growth': 5, 'repeat_engagement': 15, 'followers': 500},
-            'advocacy': {'shares': 5, 'mentions': 3}
+            # Combined FB + IG organic reach across all posts (~8 posts each/month)
+            # FB: 500 followers × 6% reach × 8 posts de-duped ≈ 275
+            # IG: 400 followers × 10% reach × 8 posts de-duped ≈ 395
+            'awareness':  {'reach': 670, 'impressions': 1250},
+            # FB: 275 reached × 1.9% ≈ 5   IG: 395 reached × 3.7% ≈ 15
+            'engagement': {'engagement_rate': 1.9, 'interactions': 20},
+            # Organic post link clicks (FB) + bio/Stories link taps (IG)
+            'conversion': {'link_clicks': 16, 'cta_clicks': 6},
+            # LIFETIME follower count (combined FB + IG)
+            'retention':  {'followers': 650, 'follower_growth': 15},
+            # FB shares ≈ 4, IG sends/reposts ≈ 6
+            'advocacy':   {'shares': 10, 'mentions': 2}
         },
         'social_media_facebook': {
-            'awareness': {'reach': 600},
-            'engagement': {'interactions': 30},
-            'conversion': {'link_clicks': 15},
-            'retention': {'followers': 300},
-            'advocacy': {'shares': 3}
+            # 500 followers × 6% reach × 8 posts de-duped
+            'awareness':  {'reach': 275},
+            # 275 reached × 1.9%
+            'engagement': {'interactions': 5},
+            'conversion': {'link_clicks': 10},
+            'retention':  {'followers': 390},   # LIFETIME
+            'advocacy':   {'shares': 4}
         },
         'social_media_instagram': {
-            'awareness': {'reach': 400},
-            'engagement': {'interactions': 20},
-            'conversion': {'link_clicks': 5},
-            'retention': {'followers': 200},
-            'advocacy': {'shares': 2}
+            # 400 followers × 10% reach × 8 posts de-duped
+            'awareness':  {'reach': 395},
+            # 395 reached × 3.7%
+            'engagement': {'interactions': 15},
+            'conversion': {'link_clicks': 6},
+            'retention':  {'followers': 260},   # LIFETIME
+            'advocacy':   {'shares': 6}
         },
         'website': {
-            'awareness': {'sessions': 500, 'users': 400},
-            'engagement': {'pages_per_session': 2.5, 'avg_session_duration': 120},
-            'conversion': {'conversions': 10, 'conversion_rate': 2.0},
-            'retention': {'returning_users': 30, 'retention_rate': 20},
-            'advocacy': {'referrals': 5, 'social_shares': 10}
+            # Organic-only, basic local SEO  (9Clouds: 250–600 is "good")
+            'awareness':  {'sessions': 420, 'users': 335},
+            # pages/session 2.0–3.2; avg duration 90–180 s  (9Clouds)
+            'engagement': {'pages_per_session': 2.5, 'avg_session_duration': 115},
+            # 2.1% form submit rate  (FirstPageSage: general practice 2.0–2.5%)
+            'conversion': {'form_submits': 9, 'form_submit_rate': 2.1},
+            # 22% returning user rate  (18–25% per Littledata/9Clouds)
+            # 335 users × 22% ≈ 74 returning users
+            'retention':  {'returning_users': 74, 'retention_rate': 22},
+            # ~8% referral sessions (Healthgrades, Yelp, insurance directories)
+            'advocacy':   {'referrals': 34}
         },
         'email': {
-            'awareness': {'emails_sent': 1000, 'emails_delivered': 950},
-            'engagement': {'email_opens': 200, 'email_clicks': 25},
-            'response': {'email_replies': 50},
-            'retention': {'unsubscribes': 5},
-            'quality': {'deliverability_score': 95}
+            # ~1 000-contact list, 2 campaigns/month
+            'awareness':  {'emails_sent': 1000, 'emails_delivered': 960},
+            # 34% open rate, 1.9% click  (Mailchimp 2024: healthcare 34.6%, CTR 1.87%)
+            'engagement': {'email_opens': 326, 'email_clicks': 18},
+            # ~0.5% of opens reply  (practitioner-reported estimate)
+            'response':   {'email_replies': 5},
+            # 0.06–0.20% unsubscribe rate  (Paubox empirical healthcare data)
+            'retention':  {'unsubscribes': 2},
+            'quality':    {'deliverability_score': 95}
         }
     },
+
+    # ------------------------------------------------------------------ #
+    #  Dental — local dental practice  (50–200 patients)
+    #  Dental skews higher: visual content, stronger appointment intent
+    #  ~540 FB followers, ~440 IG followers assumed
+    # ------------------------------------------------------------------ #
     'dental': {
         'social_media': {
-            'awareness': {'reach': 800, 'impressions': 1500},
-            'engagement': {'engagement_rate': 3.0, 'interactions': 60},
-            'conversion': {'link_clicks': 25, 'cta_clicks': 12},
-            'retention': {'follower_growth': 6, 'repeat_engagement': 18, 'followers': 400},
-            'advocacy': {'shares': 6, 'mentions': 4}
+            # FB: 540 × 6% × 8 de-duped ≈ 300   IG: 440 × 10% × 8 de-duped ≈ 430
+            'awareness':  {'reach': 730, 'impressions': 1380},
+            # FB: 300 × 1.9% ≈ 6   IG: 430 × 3.7% ≈ 16   (dental visual content lifts IG)
+            'engagement': {'engagement_rate': 2.1, 'interactions': 22},
+            'conversion': {'link_clicks': 20, 'cta_clicks': 8},
+            'retention':  {'followers': 780, 'follower_growth': 20},
+            # FB shares ≈ 5, IG sends ≈ 8  (before/after content is highly shared)
+            'advocacy':   {'shares': 13, 'mentions': 3}
         },
         'social_media_facebook': {
-            'awareness': {'reach': 500},
-            'engagement': {'interactions': 36},
-            'conversion': {'link_clicks': 18},
-            'retention': {'followers': 250},
-            'advocacy': {'shares': 4}
+            'awareness':  {'reach': 300},
+            'engagement': {'interactions': 6},
+            'conversion': {'link_clicks': 12},
+            'retention':  {'followers': 470},   # LIFETIME
+            'advocacy':   {'shares': 5}
         },
         'social_media_instagram': {
-            'awareness': {'reach': 300},
-            'engagement': {'interactions': 24},
-            'conversion': {'link_clicks': 7},
-            'retention': {'followers': 150},
-            'advocacy': {'shares': 2}
+            'awareness':  {'reach': 430},
+            'engagement': {'interactions': 16},
+            'conversion': {'link_clicks': 8},
+            'retention':  {'followers': 310},   # LIFETIME
+            'advocacy':   {'shares': 8}
         },
         'website': {
-            'awareness': {'sessions': 600, 'users': 450},
-            'engagement': {'pages_per_session': 3.0, 'avg_session_duration': 150},
-            'conversion': {'conversions': 15, 'conversion_rate': 2.5},
-            'retention': {'returning_users': 35, 'retention_rate': 25},
-            'advocacy': {'referrals': 8, 'social_shares': 12}
+            # Dental gets stronger local-search intent traffic
+            'awareness':  {'sessions': 500, 'users': 395},
+            'engagement': {'pages_per_session': 2.8, 'avg_session_duration': 130},
+            # 2.8% form submit rate  (FirstPageSage: dental 2.5–3.5%)
+            'conversion': {'form_submits': 14, 'form_submit_rate': 2.8},
+            # 395 users × 22% ≈ 87
+            'retention':  {'returning_users': 87, 'retention_rate': 22},
+            # ~8.4% referral  (Healthgrades, ZocDoc, dental directories)
+            'advocacy':   {'referrals': 42}
         },
         'email': {
-            'awareness': {'emails_sent': 800, 'emails_delivered': 768},
-            'engagement': {'email_opens': 176, 'email_clicks': 24},
-            'response': {'email_replies': 48},
-            'retention': {'unsubscribes': 3},
-            'quality': {'deliverability_score': 96}
+            'awareness':  {'emails_sent': 1000, 'emails_delivered': 970},
+            # 37% open rate, 2.4% click  (MailerLite Medical/Dental: 43.75%; Mailchimp blended ~35–38%)
+            'engagement': {'email_opens': 359, 'email_clicks': 23},
+            'response':   {'email_replies': 5},
+            'retention':  {'unsubscribes': 2},
+            'quality':    {'deliverability_score': 96}
         }
     },
+
+    # ------------------------------------------------------------------ #
+    #  Medical — specialist clinic / GP practice  (50–200 patients)
+    #  Lower session volume, slightly lower form rate than dental
+    #  ~470 FB followers, ~370 IG followers assumed
+    # ------------------------------------------------------------------ #
     'medical': {
         'social_media': {
-            'awareness': {'reach': 900, 'impressions': 1800},
-            'engagement': {'engagement_rate': 2.2, 'interactions': 45},
-            'conversion': {'link_clicks': 18, 'cta_clicks': 9},
-            'retention': {'follower_growth': 4, 'repeat_engagement': 12, 'followers': 450},
-            'advocacy': {'shares': 4, 'mentions': 2}
+            # FB: 470 × 6% × 8 de-duped ≈ 240   IG: 370 × 10% × 8 de-duped ≈ 345
+            'awareness':  {'reach': 585, 'impressions': 1100},
+            # FB: 240 × 1.9% ≈ 5   IG: 345 × 3.7% ≈ 13
+            'engagement': {'engagement_rate': 1.7, 'interactions': 18},
+            'conversion': {'link_clicks': 13, 'cta_clicks': 5},
+            'retention':  {'followers': 630, 'follower_growth': 12},
+            # FB shares ≈ 3, IG sends ≈ 5
+            'advocacy':   {'shares': 8, 'mentions': 2}
         },
         'social_media_facebook': {
-            'awareness': {'reach': 540},
-            'engagement': {'interactions': 27},
-            'conversion': {'link_clicks': 12},
-            'retention': {'followers': 270},
-            'advocacy': {'shares': 3}
+            'awareness':  {'reach': 240},
+            'engagement': {'interactions': 5},
+            'conversion': {'link_clicks': 8},
+            'retention':  {'followers': 375},   # LIFETIME
+            'advocacy':   {'shares': 3}
         },
         'social_media_instagram': {
-            'awareness': {'reach': 360},
-            'engagement': {'interactions': 18},
-            'conversion': {'link_clicks': 6},
-            'retention': {'followers': 180},
-            'advocacy': {'shares': 1}
+            'awareness':  {'reach': 345},
+            'engagement': {'interactions': 13},
+            'conversion': {'link_clicks': 5},
+            'retention':  {'followers': 255},   # LIFETIME
+            'advocacy':   {'shares': 5}
         },
         'website': {
-            'awareness': {'sessions': 550, 'users': 420},
-            'engagement': {'pages_per_session': 2.8, 'avg_session_duration': 140},
-            'conversion': {'conversions': 12, 'conversion_rate': 2.2},
-            'retention': {'returning_users': 32, 'retention_rate': 22},
-            'advocacy': {'referrals': 6, 'social_shares': 8}
+            'awareness':  {'sessions': 350, 'users': 280},
+            'engagement': {'pages_per_session': 2.5, 'avg_session_duration': 120},
+            # 2.3% form submit rate  (FirstPageSage: medical specialty 1.8–2.4%)
+            'conversion': {'form_submits': 8, 'form_submit_rate': 2.3},
+            # 280 users × 19% ≈ 53  (medical repeat-visit rate 16–22%)
+            'retention':  {'returning_users': 53, 'retention_rate': 19},
+            # ~8% referral  (specialist directories, GP referral sites)
+            'advocacy':   {'referrals': 28}
         },
         'email': {
-            'awareness': {'emails_sent': 900, 'emails_delivered': 855},
-            'engagement': {'email_opens': 189, 'email_clicks': 25},
-            'response': {'email_replies': 50},
-            'retention': {'unsubscribes': 5},
-            'quality': {'deliverability_score': 95}
+            'awareness':  {'emails_sent': 800, 'emails_delivered': 776},
+            # 35% open rate, 2.1% click  (Mailchimp healthcare blended)
+            'engagement': {'email_opens': 272, 'email_clicks': 16},
+            'response':   {'email_replies': 4},
+            'retention':  {'unsubscribes': 2},
+            'quality':    {'deliverability_score': 95}
         }
     },
-    'default': {
+
+    # ------------------------------------------------------------------ #
+    #  Other — generic small local business
+    #  Uses Mailchimp all-industry averages for email (21.3% open, 2.6% click)
+    #  ~450 FB followers, ~350 IG followers assumed
+    # ------------------------------------------------------------------ #
+    'other': {
         'social_media': {
-            'awareness': {'reach': 1000, 'impressions': 2000},
-            'engagement': {'engagement_rate': 2.5, 'interactions': 50},
-            'conversion': {'link_clicks': 20, 'cta_clicks': 10},
-            'retention': {'follower_growth': 5, 'repeat_engagement': 15, 'followers': 500},
-            'advocacy': {'shares': 5, 'mentions': 3}
+            # FB: 450 × 5% × 8 de-duped ≈ 200   IG: 350 × 9% × 8 de-duped ≈ 300
+            'awareness':  {'reach': 500, 'impressions': 950},
+            'engagement': {'engagement_rate': 1.5, 'interactions': 14},
+            'conversion': {'link_clicks': 11, 'cta_clicks': 4},
+            'retention':  {'followers': 450, 'follower_growth': 10},
+            # FB shares ≈ 2, IG sends ≈ 4
+            'advocacy':   {'shares': 6, 'mentions': 1}
         },
         'social_media_facebook': {
-            'awareness': {'reach': 600},
-            'engagement': {'interactions': 30},
-            'conversion': {'link_clicks': 15},
-            'retention': {'followers': 300},
-            'advocacy': {'shares': 3}
+            'awareness':  {'reach': 200},
+            'engagement': {'interactions': 4},
+            'conversion': {'link_clicks': 7},
+            'retention':  {'followers': 270},   # LIFETIME
+            'advocacy':   {'shares': 2}
         },
         'social_media_instagram': {
-            'awareness': {'reach': 400},
-            'engagement': {'interactions': 20},
-            'conversion': {'link_clicks': 5},
-            'retention': {'followers': 200},
-            'advocacy': {'shares': 2}
+            'awareness':  {'reach': 300},
+            'engagement': {'interactions': 10},
+            'conversion': {'link_clicks': 4},
+            'retention':  {'followers': 180},   # LIFETIME
+            'advocacy':   {'shares': 4}
         },
         'website': {
-            'awareness': {'sessions': 500, 'users': 400},
-            'engagement': {'pages_per_session': 2.5, 'avg_session_duration': 120},
-            'conversion': {'conversions': 10, 'conversion_rate': 2.0},
-            'retention': {'returning_users': 30, 'retention_rate': 20},
-            'advocacy': {'referrals': 5, 'social_shares': 10}
+            'awareness':  {'sessions': 350, 'users': 275},
+            'engagement': {'pages_per_session': 2.2, 'avg_session_duration': 100},
+            'conversion': {'form_submits': 7, 'form_submit_rate': 2.0},
+            # 275 users × 22% ≈ 60
+            'retention':  {'returning_users': 60, 'retention_rate': 22},
+            'advocacy':   {'referrals': 32}
         },
         'email': {
-            'awareness': {'emails_sent': 1000, 'emails_delivered': 950},
-            'engagement': {'email_opens': 200, 'email_clicks': 25},
-            'response': {'email_replies': 50},
-            'retention': {'unsubscribes': 5},
-            'quality': {'deliverability_score': 95}
+            'awareness':  {'emails_sent': 700, 'emails_delivered': 680},
+            # 21.3% open, 2.6% click  (Mailchimp all-industry 2024)
+            'engagement': {'email_opens': 145, 'email_clicks': 18},
+            'response':   {'email_replies': 3},
+            'retention':  {'unsubscribes': 2},
+            'quality':    {'deliverability_score': 92}
+        }
+    },
+
+    # ------------------------------------------------------------------ #
+    #  Default — fallback for unknown/unset industry (mirrors 'other')
+    # ------------------------------------------------------------------ #
+    'default': {
+        'social_media': {
+            'awareness':  {'reach': 500, 'impressions': 950},
+            'engagement': {'engagement_rate': 1.5, 'interactions': 14},
+            'conversion': {'link_clicks': 11, 'cta_clicks': 4},
+            'retention':  {'followers': 450, 'follower_growth': 10},
+            'advocacy':   {'shares': 6, 'mentions': 1}
+        },
+        'social_media_facebook': {
+            'awareness':  {'reach': 200},
+            'engagement': {'interactions': 4},
+            'conversion': {'link_clicks': 7},
+            'retention':  {'followers': 270},
+            'advocacy':   {'shares': 2}
+        },
+        'social_media_instagram': {
+            'awareness':  {'reach': 300},
+            'engagement': {'interactions': 10},
+            'conversion': {'link_clicks': 4},
+            'retention':  {'followers': 180},
+            'advocacy':   {'shares': 4}
+        },
+        'website': {
+            'awareness':  {'sessions': 350, 'users': 275},
+            'engagement': {'pages_per_session': 2.2, 'avg_session_duration': 100},
+            'conversion': {'form_submits': 7, 'form_submit_rate': 2.0},
+            'retention':  {'returning_users': 60, 'retention_rate': 22},
+            'advocacy':   {'referrals': 32}
+        },
+        'email': {
+            'awareness':  {'emails_sent': 700, 'emails_delivered': 680},
+            'engagement': {'email_opens': 145, 'email_clicks': 18},
+            'response':   {'email_replies': 3},
+            'retention':  {'unsubscribes': 2},
+            'quality':    {'deliverability_score': 92}
         }
     }
 }

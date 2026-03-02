@@ -6,6 +6,8 @@
 
 let currentCustomer = null;
 let currentMetrics = null;
+let isEditMode = false;
+let existingSelectedPageIds = [];
 let charts = {
     socialMedia: null,
     socialMediaFacebook: null,
@@ -47,6 +49,9 @@ function initializeEventListeners() {
     
     // Add customer button
     document.getElementById('addCustomerBtn').addEventListener('click', openAddCustomerModal);
+
+    // Edit customer button
+    document.getElementById('editCustomerBtn').addEventListener('click', openEditCustomerModal);
     
     // Modal close buttons
     document.querySelectorAll('.close-modal, .cancel-modal').forEach(btn => {
@@ -116,7 +121,8 @@ async function loadCustomerData(customerId) {
         if (customerData.success && metricsData.success) {
             currentCustomer = customerData.customer;
             currentMetrics = metricsData.metrics;
-            
+
+            document.getElementById('editCustomerBtn').style.display = 'flex';
             renderDashboard();
         }
     } catch (error) {
@@ -310,17 +316,164 @@ function openAddCustomerModal() {
 function closeAddCustomerModal() {
     document.getElementById('addCustomerModal').classList.remove('active');
     document.getElementById('addCustomerForm').reset();
-    
+
     // Reset page selection
     document.getElementById('pageSelectionArea').style.display = 'none';
     document.getElementById('availablePages').innerHTML = '';
     discoveredPages = [];
     selectedPageIds = [];
+
+    // Reset edit mode
+    isEditMode = false;
+    existingSelectedPageIds = [];
+    document.getElementById('customerModalTitle').textContent = 'Add New Customer';
+    document.getElementById('customerModalSubmitBtn').textContent = 'Create Customer';
+}
+
+async function openEditCustomerModal() {
+    if (!currentCustomer) return;
+
+    try {
+        showLoading(true);
+        const response = await fetch(`/api/customers/${currentCustomer.id}`);
+        const data = await response.json();
+        showLoading(false);
+
+        if (!data.success) {
+            showToast('Error loading customer details', 'error');
+            return;
+        }
+
+        const { customer, credentials } = data;
+
+        // Set edit mode
+        isEditMode = true;
+        document.getElementById('customerModalTitle').textContent = 'Edit Customer';
+        document.getElementById('customerModalSubmitBtn').textContent = 'Save Changes';
+
+        // Populate basic info
+        document.getElementById('customerName').value = customer.name || '';
+        document.getElementById('customerIndustry').value = customer.industry || '';
+
+        // Populate social media credentials
+        const socialCreds = credentials.social_media || {};
+        if (socialCreds.system_user_token) {
+            document.getElementById('systemUserToken').value = socialCreds.system_user_token;
+        }
+        if (socialCreds.selected_page_ids) {
+            existingSelectedPageIds = socialCreds.selected_page_ids.split(',').filter(Boolean);
+        }
+
+        // Populate email credentials
+        const emailCreds = credentials.email || {};
+        if (emailCreds.instantly_api_key) {
+            document.getElementById('instantlyApiKey').value = emailCreds.instantly_api_key;
+        }
+        if (emailCreds.klaviyo_api_key) {
+            document.getElementById('klaviyoApiKey').value = emailCreds.klaviyo_api_key;
+        }
+
+        // Populate website credentials
+        const websiteCreds = credentials.website || {};
+        if (websiteCreds.website_url) {
+            document.getElementById('websiteUrl').value = websiteCreds.website_url;
+        }
+        if (websiteCreds.ga4_property_id) {
+            document.getElementById('ga4PropertyId').value = websiteCreds.ga4_property_id;
+        }
+
+        document.getElementById('addCustomerModal').classList.add('active');
+    } catch (error) {
+        showLoading(false);
+        showToast('Error loading customer details', 'error');
+        console.error('Error:', error);
+    }
+}
+
+async function handleEditCustomer() {
+    const formData = new FormData(document.getElementById('addCustomerForm'));
+    const customerData = {
+        name: formData.get('name'),
+        industry: formData.get('industry'),
+        credentials: {
+            social_media: {},
+            email: {},
+            website: {}
+        }
+    };
+
+    const systemToken = document.getElementById('systemUserToken').value;
+    if (systemToken) {
+        customerData.credentials.social_media.system_user_token = systemToken;
+        // Use re-discovered pages if available, otherwise keep existing
+        if (discoveredPages.length > 0) {
+            if (selectedPageIds.length === 0) {
+                showToast('Please select at least one page to track.', 'error');
+                return;
+            }
+            customerData.credentials.social_media.selected_page_ids = selectedPageIds.join(',');
+        } else if (existingSelectedPageIds.length > 0) {
+            customerData.credentials.social_media.selected_page_ids = existingSelectedPageIds.join(',');
+        }
+    }
+
+    const instantlyKey = document.getElementById('instantlyApiKey').value;
+    if (instantlyKey) {
+        customerData.credentials.email.instantly_api_key = instantlyKey;
+    }
+
+    const klaviyoKey = document.getElementById('klaviyoApiKey').value;
+    if (klaviyoKey) {
+        customerData.credentials.email.klaviyo_api_key = klaviyoKey;
+    }
+
+    const websiteUrlEdit = document.getElementById('websiteUrl').value;
+    if (websiteUrlEdit) {
+        customerData.credentials.website.website_url = websiteUrlEdit;
+    }
+
+    const ga4PropertyId = document.getElementById('ga4PropertyId').value;
+    if (ga4PropertyId) {
+        customerData.credentials.website.ga4_property_id = ga4PropertyId;
+    }
+
+    try {
+        showLoading(true);
+
+        const response = await fetch(`/api/customers/${currentCustomer.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(customerData)
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showToast('Customer updated successfully!', 'success');
+            const customerId = currentCustomer.id;
+            closeAddCustomerModal();
+            await loadCustomers();
+            document.getElementById('customerSelect').value = customerId;
+            loadCustomerData(customerId);
+        } else {
+            showToast('Error updating customer: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showToast('Error updating customer', 'error');
+        console.error('Error:', error);
+    } finally {
+        showLoading(false);
+    }
 }
 
 async function handleAddCustomer(e) {
     e.preventDefault();
-    
+
+    if (isEditMode) {
+        await handleEditCustomer();
+        return;
+    }
+
     const formData = new FormData(e.target);
     const customerData = {
         name: formData.get('name'),
@@ -359,14 +512,19 @@ async function handleAddCustomer(e) {
         customerData.credentials.email.klaviyo_api_key = klaviyoKey;
     }
     
+    const websiteUrl = document.getElementById('websiteUrl').value;
+    if (websiteUrl) {
+        customerData.credentials.website.website_url = websiteUrl;
+    }
+
     const ga4PropertyId = document.getElementById('ga4PropertyId').value;
     if (ga4PropertyId) {
         customerData.credentials.website.ga4_property_id = ga4PropertyId;
     }
-    
+
     try {
         showLoading(true);
-        
+
         const response = await fetch('/api/customers', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -401,6 +559,7 @@ async function handleAddCustomer(e) {
 function showNoCustomerMessage() {
     document.getElementById('noCustomerMessage').style.display = 'flex';
     document.getElementById('dashboardContent').style.display = 'none';
+    document.getElementById('editCustomerBtn').style.display = 'none';
     currentCustomer = null;
     currentMetrics = null;
 }

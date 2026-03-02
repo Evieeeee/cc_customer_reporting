@@ -46,6 +46,7 @@ from models import (
 
 # Import the existing analytics modules
 from email_metrics_fetcher import InstantlyFetcher, KlaviyoFetcher
+from website_ai_estimator import WebsiteAIEstimator
 from social_media_analytics import (
     get_all_pages_and_instagram_accounts,
     get_facebook_metrics_bulk,
@@ -233,7 +234,7 @@ class GA4Fetcher:
                 'referrals': int(advocacy.get('referral_sessions', 0)),
                 'social_shares': int(advocacy.get('social_sessions', 0))
             },
-            'top_pages': []
+            'top_pages': month_data.get('top_pages', [])
         }
     
     def _empty_metrics(self):
@@ -397,7 +398,12 @@ class DataCollector:
         property_id = website_creds.get('ga4_property_id')
         
         if not property_id:
-            print("  [WARNING] No GA4 property ID")
+            website_url = website_creds.get('website_url')
+            if website_url:
+                print(f"  [INFO] No GA4 property ID — using AI estimation for {website_url}")
+                self._collect_website_ai(website_url, start_month, end_month)
+            else:
+                print("  [WARNING] No GA4 property ID and no website URL — skipping website metrics")
             return
         
         try:
@@ -452,13 +458,13 @@ class DataCollector:
                                   float(engagement.get('avg_session_duration', 0)),
                                   'avg_session_duration', days, year, month)
                 
-                # Store conversion metrics
-                self._store_metric('website', 'conversion', 'Conversions',
+                # Store conversion metrics (renamed to Form Submits)
+                self._store_metric('website', 'conversion', 'Form Submits',
                                   int(conversion.get('total_conversions', 0)),
-                                  'conversions', days, year, month)
-                self._store_metric('website', 'conversion', 'Conversion Rate',
+                                  'form_submits', days, year, month)
+                self._store_metric('website', 'conversion', 'Form Submit Rate',
                                   float(conversion.get('conversion_rate', 0)),
-                                  'conversion_rate', days, year, month)
+                                  'form_submit_rate', days, year, month)
                 
                 # Store retention metrics
                 self._store_metric('website', 'retention', 'Returning Users',
@@ -472,7 +478,24 @@ class DataCollector:
                 self._store_metric('website', 'advocacy', 'Referrals',
                                   int(advocacy.get('referral_sessions', 0)),
                                   'referrals', days, year, month)
-            
+
+            # Store top pages from the most recent month
+            if by_month:
+                latest_month_str = max(by_month.keys())
+                top_pages = by_month[latest_month_str].get('top_pages', [])
+                for page in top_pages[:3]:
+                    try:
+                        TopPerformer.add(
+                            customer_id=self.customer_id,
+                            medium='website',
+                            item_id=page.get('path', '/'),
+                            item_title=page.get('title', page.get('path', '/')),
+                            metric_name='Sessions',
+                            metric_value=int(page.get('sessions', 0))
+                        )
+                    except Exception as page_err:
+                        print(f"  [WARNING] Could not store top page: {page_err}")
+
             print(f"  ✓ Stored {len(by_month)} months of website data")
             
         except Exception as e:
@@ -480,6 +503,97 @@ class DataCollector:
             import traceback
             traceback.print_exc()
     
+    def _collect_website_ai(self, website_url: str, start_month: datetime, end_month: datetime):
+        """
+        Use AI to estimate website metrics when GA4 is not configured.
+        Capped at the last 3 months regardless of the requested range.
+        """
+        try:
+            # Calculate requested months but cap at MAX_MONTHS
+            from dateutil.relativedelta import relativedelta
+            months_requested = (
+                (end_month.year - start_month.year) * 12
+                + (end_month.month - start_month.month)
+            ) + 1
+            months_to_estimate = min(months_requested, WebsiteAIEstimator.MAX_MONTHS)
+
+            estimator = WebsiteAIEstimator(
+                website_url=website_url,
+                industry=self.customer.get('industry', 'healthcare')
+            )
+            by_month = estimator.estimate_monthly_metrics(months=months_to_estimate)
+
+            if not by_month:
+                print("  [WARNING] AI estimator returned no data")
+                return
+
+            for month_str, month_data in by_month.items():
+                year, month = map(int, month_str.split('-'))
+                if month == 12:
+                    next_month_start = datetime(year + 1, 1, 1)
+                else:
+                    next_month_start = datetime(year, month + 1, 1)
+                month_start = datetime(year, month, 1)
+                days = (next_month_start - month_start).days
+
+                awareness  = month_data.get('awareness', {})
+                engagement = month_data.get('engagement', {})
+                conversion = month_data.get('conversion', {})
+                retention  = month_data.get('retention', {})
+                advocacy   = month_data.get('advocacy', {})
+
+                self._store_metric('website', 'awareness', 'Sessions',
+                                   int(awareness.get('sessions', 0)),
+                                   'sessions', days, year, month)
+                self._store_metric('website', 'awareness', 'Users',
+                                   int(awareness.get('users', 0)),
+                                   'users', days, year, month)
+                self._store_metric('website', 'engagement', 'Avg Session Duration',
+                                   float(engagement.get('avg_session_duration', 0)),
+                                   'avg_session_duration', days, year, month)
+                self._store_metric('website', 'engagement', 'Pages per Session',
+                                   float(engagement.get('pages_per_session', 0)),
+                                   'pages_per_session', days, year, month)
+                self._store_metric('website', 'conversion', 'Form Submits',
+                                   int(conversion.get('total_conversions', 0)),
+                                   'form_submits', days, year, month)
+                self._store_metric('website', 'conversion', 'Form Submit Rate',
+                                   float(conversion.get('conversion_rate', 0)),
+                                   'form_submit_rate', days, year, month)
+                self._store_metric('website', 'retention', 'Returning Users',
+                                   int(retention.get('returning_users', 0)),
+                                   'returning_users', days, year, month)
+                self._store_metric('website', 'retention', 'Retention Rate',
+                                   float(retention.get('returning_user_rate', 0)),
+                                   'retention_rate', days, year, month)
+                self._store_metric('website', 'advocacy', 'Referrals',
+                                   int(advocacy.get('referral_sessions', 0)),
+                                   'referrals', days, year, month)
+
+            # Store top pages from the most recent AI-estimated month
+            if by_month:
+                latest_month_str = max(by_month.keys())
+                top_pages = by_month[latest_month_str].get('top_pages', [])
+                for page in top_pages[:3]:
+                    try:
+                        TopPerformer.add(
+                            customer_id=self.customer_id,
+                            medium='website',
+                            item_id=page.get('path', '/'),
+                            item_title=page.get('title', page.get('path', '/')),
+                            metric_name='Sessions',
+                            metric_value=int(page.get('sessions', 0))
+                        )
+                    except Exception as page_err:
+                        print(f"  [WARNING] Could not store AI top page: {page_err}")
+
+            print(f"  ✓ AI estimated and stored {len(by_month)} months of website data")
+
+        except Exception as e:
+            print(f"  [ERROR] AI website estimation failed: {e}")
+            import traceback
+            traceback.print_exc()
+
     def collect_email_bulk(self, start_month: datetime, end_month: datetime):
         """
         Collect email data for 12 months using aggregate analytics endpoint.
