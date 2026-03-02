@@ -454,7 +454,7 @@ class KlaviyoFetcher:
         self.headers = {
             "Authorization": f"Klaviyo-API-Key {api_key}",
             "Accept": "application/json",
-            "revision": "2025-10-15"
+            "revision": "2024-10-15"
         }
     
     def get_metrics_list(self) -> List[Dict]:
@@ -509,10 +509,7 @@ class KlaviyoFetcher:
                             "metric_id": metric_id,
                             "measurements": ["count", "unique"],
                             "interval": "day",
-                            "filter": [
-                                f"greater-or-equal(datetime,{start_date})",
-                                f"less-than(datetime,{end_date})"
-                            ]
+                            "filter": f"greater-or-equal(datetime,{start_date}),less-than(datetime,{end_date})"
                         }
                     }
                 }
