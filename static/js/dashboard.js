@@ -564,6 +564,10 @@ function showNoCustomerMessage() {
     currentMetrics = null;
 }
 
+function hasData(metricsObj) {
+    return !!(metricsObj && typeof metricsObj === 'object' && Object.keys(metricsObj).length > 0);
+}
+
 function renderDashboard() {
     document.getElementById('noCustomerMessage').style.display = 'none';
     document.getElementById('dashboardContent').style.display = 'block';
@@ -573,10 +577,19 @@ function renderDashboard() {
         return;
     }
 
-    // Render each section
-    renderSocialMediaSection();
-    renderWebsiteSection();
-    renderEmailSection();
+    const hasSocial  = hasData(currentMetrics.social_media) ||
+                       hasData(currentMetrics.social_media_facebook) ||
+                       hasData(currentMetrics.social_media_instagram);
+    const hasWebsite = hasData(currentMetrics.website);
+    const hasEmail   = hasData(currentMetrics.email);
+
+    document.getElementById('socialMediaSection').style.display = hasSocial  ? '' : 'none';
+    document.getElementById('websiteSection').style.display     = hasWebsite ? '' : 'none';
+    document.getElementById('emailSection').style.display       = hasEmail   ? '' : 'none';
+
+    if (hasSocial)  renderSocialMediaSection();
+    if (hasWebsite) renderWebsiteSection();
+    if (hasEmail)   renderEmailSection();
     initSocialMediaTabs();
 }
 
