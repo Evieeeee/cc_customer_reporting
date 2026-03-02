@@ -666,6 +666,16 @@ class DataCollector:
 
             print(f"  Found {len(accounts)} social media accounts")
 
+            # Filter to only selected pages if selection is stored
+            selected_page_ids_str = social_creds.get('selected_page_ids', '')
+            if selected_page_ids_str:
+                selected_ids = set(pid.strip() for pid in selected_page_ids_str.split(',') if pid.strip())
+                accounts = [a for a in accounts if a['page_id'] in selected_ids]
+                if not accounts:
+                    print(f"  [WARNING] No accounts matched selected_page_ids: {selected_ids}")
+                    return
+                print(f"  Filtered to {len(accounts)} selected account(s): {[a['page_name'] for a in accounts]}")
+
             # Calculate total days to request
             days_total = (end_month - start_month).days + 1
 
