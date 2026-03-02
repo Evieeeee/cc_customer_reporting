@@ -129,6 +129,34 @@ body {
     line-height: 1;
 }
 
+/* Edit Customer Button */
+.edit-customer-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: var(--white);
+    border: 1.5px solid var(--primary-color);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s ease;
+    color: var(--primary-color);
+    flex-shrink: 0;
+}
+
+.edit-customer-btn:hover {
+    background-color: var(--primary-color);
+    color: var(--white);
+    box-shadow: var(--shadow-md);
+    transform: scale(1.05);
+}
+
+.edit-customer-btn:hover svg path {
+    stroke: var(--white);
+}
+
 /* Customer Select Dropdown */
 .customer-select {
     background-color: var(--white);
