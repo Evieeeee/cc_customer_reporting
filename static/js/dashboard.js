@@ -640,6 +640,10 @@ function renderSocialMediaSection() {
             loadTopPerformers(tab.id, tab.topPerformersId);
         }
     });
+
+    // Auto-select first card in the active (Total) tab
+    const firstSocialCard = document.querySelector('#socialMediaKpis-social_media .kpi-card');
+    if (firstSocialCard) firstSocialCard.click();
 }
 
 function renderWebsiteSection() {
@@ -670,6 +674,10 @@ function renderWebsiteSection() {
     });
     
     loadTopPerformers('website', 'topPages');
+
+    // Auto-select first card
+    const firstWebsiteCard = container.querySelector('.kpi-card');
+    if (firstWebsiteCard) firstWebsiteCard.click();
 }
 
 function renderEmailSection() {
@@ -698,6 +706,10 @@ function renderEmailSection() {
             container.appendChild(card);
         }
     });
+
+    // Auto-select first card
+    const firstEmailCard = container.querySelector('.kpi-card');
+    if (firstEmailCard) firstEmailCard.click();
 }
 
 function createKPICard(medium, journeyStage, kpiName, kpiValue, benchmarkValue, timePeriodDays) {
@@ -741,7 +753,7 @@ function createKPICard(medium, journeyStage, kpiName, kpiValue, benchmarkValue, 
     
     // Add click handler to show historical chart
     card.addEventListener('click', () => {
-        document.querySelectorAll('.kpi-card').forEach(c => c.classList.remove('active'));
+        card.closest('.kpi-cards-container').querySelectorAll('.kpi-card').forEach(c => c.classList.remove('active'));
         card.classList.add('active');
         loadHistoricalChart(medium, journeyStage, kpiName);
     });
