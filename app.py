@@ -53,10 +53,20 @@ def create_customer():
         if not name or not industry:
             return jsonify({'success': False, 'error': 'Name and industry required'}), 400
         
-        customer_id = Customer.create(name, industry)
-        
-        # Store credentials if provided
+        # Validate social media page selection when a token is provided
         credentials = data.get('credentials', {})
+        social_creds = credentials.get('social_media', {})
+        if social_creds.get('system_user_token'):
+            selected_ids = social_creds.get('selected_page_ids', '')
+            if not selected_ids:
+                return jsonify({
+                    'success': False,
+                    'error': 'Please discover and select at least one Facebook or Instagram page before saving.'
+                }), 400
+
+        customer_id = Customer.create(name, industry)
+
+        # Store credentials if provided
         for platform, creds in credentials.items():
             for key, value in creds.items():
                 if value:  # Only store non-empty credentials

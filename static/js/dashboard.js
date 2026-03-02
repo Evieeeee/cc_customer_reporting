@@ -332,15 +332,21 @@ async function handleAddCustomer(e) {
         }
     };
     
-    // Add credentials if provided
+    // Validate and add social media credentials
     const systemToken = document.getElementById('systemUserToken').value;
     if (systemToken) {
-        customerData.credentials.social_media.system_user_token = systemToken;
-        
-        // Add selected page IDs if pages were discovered
-        if (selectedPageIds.length > 0) {
-            customerData.credentials.social_media.selected_page_ids = selectedPageIds.join(',');
+        // Require page discovery before saving
+        if (discoveredPages.length === 0) {
+            showToast('Please click "Discover Available Pages" to find your Facebook/Instagram pages before saving.', 'error');
+            return;
         }
+        // Require at least one page selected
+        if (selectedPageIds.length === 0) {
+            showToast('Please select at least one Facebook or Instagram page to track.', 'error');
+            return;
+        }
+        customerData.credentials.social_media.system_user_token = systemToken;
+        customerData.credentials.social_media.selected_page_ids = selectedPageIds.join(',');
     }
     
     const instantlyKey = document.getElementById('instantlyApiKey').value;
@@ -1027,7 +1033,7 @@ function renderPageSelection(pages) {
 function togglePageSelection(pageId, selected) {
     const checkbox = document.getElementById(`page_${pageId}`);
     const item = checkbox.closest('.page-item');
-    
+
     if (selected) {
         if (!selectedPageIds.includes(pageId)) {
             selectedPageIds.push(pageId);
@@ -1036,5 +1042,11 @@ function togglePageSelection(pageId, selected) {
     } else {
         selectedPageIds = selectedPageIds.filter(id => id !== pageId);
         item.classList.remove('selected');
+    }
+
+    // Show warning when no pages are selected
+    const warning = document.getElementById('noPageSelectedWarning');
+    if (warning) {
+        warning.style.display = selectedPageIds.length === 0 ? 'block' : 'none';
     }
 }
