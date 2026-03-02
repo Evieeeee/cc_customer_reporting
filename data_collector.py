@@ -482,16 +482,25 @@ class DataCollector:
     
     def collect_email_bulk(self, start_month: datetime, end_month: datetime):
         """
-        Collect email data for 12 months using aggregate analytics endpoint
-        Makes 1 API call per month for aggregate metrics across all campaigns
+        Collect email data for 12 months using aggregate analytics endpoint.
+        Supports both Instantly.ai and Klaviyo platforms.
         """
         email_creds = self.credentials.get('email', {})
         instantly_key = email_creds.get('instantly_api_key')
+        klaviyo_key = email_creds.get('klaviyo_api_key')
 
-        if not instantly_key:
-            print("  [WARNING] No email credentials")
+        if not instantly_key and not klaviyo_key:
+            print("  [WARNING] No email credentials (neither Instantly nor Klaviyo key found)")
             return
 
+        if instantly_key:
+            self._collect_instantly_bulk(instantly_key, start_month, end_month)
+
+        if klaviyo_key:
+            self._collect_klaviyo_bulk(klaviyo_key, start_month, end_month)
+
+    def _collect_instantly_bulk(self, instantly_key: str, start_month: datetime, end_month: datetime):
+        """Collect Instantly.ai email data for a date range, month by month"""
         try:
             fetcher = InstantlyFetcher(instantly_key)
 
@@ -629,10 +638,102 @@ class DataCollector:
             print(f"{'='*70}\n")
             
         except Exception as e:
-            print(f"  [ERROR] Email bulk collection failed: {e}")
+            print(f"  [ERROR] Instantly email bulk collection failed: {e}")
             import traceback
             traceback.print_exc()
-    
+
+    def _collect_klaviyo_bulk(self, klaviyo_key: str, start_month: datetime, end_month: datetime):
+        """Collect Klaviyo email data for a date range, month by month"""
+        import calendar
+
+        print(f"\n  [Klaviyo] Starting bulk collection from "
+              f"{start_month.strftime('%Y-%m')} to {end_month.strftime('%Y-%m')}")
+
+        try:
+            fetcher = KlaviyoFetcher(klaviyo_key)
+
+            # Pre-fetch metric IDs once — more efficient than per-month lookup
+            print("  [Klaviyo] Discovering metric IDs...")
+            metric_mapping = {
+                'Received Email': 'received',
+                'Opened Email': 'opened',
+                'Clicked Email': 'clicked',
+                'Bounced Email': 'bounced',
+                'Unsubscribed from Email Marketing': 'unsubscribed',
+            }
+
+            metric_ids = {}
+            for metric_name, key in metric_mapping.items():
+                mid = fetcher.find_metric_id(metric_name)
+                if mid:
+                    metric_ids[key] = mid
+                    print(f"  [Klaviyo] Found '{metric_name}': {mid}")
+                else:
+                    print(f"  [Klaviyo] Warning: metric not found: '{metric_name}'")
+
+            if not metric_ids:
+                print("  [Klaviyo] No metrics found — check API key and account permissions")
+                return
+
+            # Process month by month
+            current_month = start_month.replace(day=1)
+            months_processed = 0
+
+            while current_month <= end_month:
+                year = current_month.year
+                month = current_month.month
+                last_day = calendar.monthrange(year, month)[1]
+
+                month_start_str = f"{year}-{month:02d}-01T00:00:00"
+                month_end_str = f"{year}-{month:02d}-{last_day:02d}T23:59:59"
+
+                print(f"  [Klaviyo] Processing {year}-{month:02d}...")
+
+                results = {}
+                for key, mid in metric_ids.items():
+                    results[key] = fetcher.get_metric_aggregate(mid, month_start_str, month_end_str)
+
+                received_total = results.get('received', {}).get('total', 0)
+                opened_total = results.get('opened', {}).get('total', 0)
+                clicked_total = results.get('clicked', {}).get('total', 0)
+                bounced_total = results.get('bounced', {}).get('total', 0)
+                unsubscribed_total = results.get('unsubscribed', {}).get('total', 0)
+
+                delivered = max(0, received_total - bounced_total)
+                deliverability_score = round(
+                    (delivered / received_total * 100) if received_total > 0 else 0, 2
+                )
+
+                print(f"  [Klaviyo] {year}-{month:02d}: received={received_total}, "
+                      f"opened={opened_total}, clicked={clicked_total}, "
+                      f"bounced={bounced_total}, unsub={unsubscribed_total}")
+
+                self._store_metric('email', 'awareness', 'Emails Sent',
+                                   received_total, 'emails_sent', last_day, year, month)
+                self._store_metric('email', 'awareness', 'Emails Delivered',
+                                   delivered, 'emails_delivered', last_day, year, month)
+                self._store_metric('email', 'engagement', 'Email Opens',
+                                   opened_total, 'email_opens', last_day, year, month)
+                self._store_metric('email', 'engagement', 'Email Clicks',
+                                   clicked_total, 'email_clicks', last_day, year, month)
+                self._store_metric('email', 'retention', 'Unsubscribes',
+                                   unsubscribed_total, 'unsubscribes', last_day, year, month)
+                self._store_metric('email', 'quality', 'Deliverability Score',
+                                   deliverability_score, 'deliverability_score', last_day, year, month)
+
+                months_processed += 1
+                if month == 12:
+                    current_month = datetime(year + 1, 1, 1)
+                else:
+                    current_month = datetime(year, month + 1, 1)
+
+            print(f"  [Klaviyo] ✓ Stored {months_processed} months of Klaviyo email data")
+
+        except Exception as e:
+            print(f"  [ERROR] Klaviyo bulk collection failed: {e}")
+            import traceback
+            traceback.print_exc()
+
     def collect_social_bulk(self, start_month: datetime, end_month: datetime):
         """
         Collect social media data for ALL months, storing metrics separately for
