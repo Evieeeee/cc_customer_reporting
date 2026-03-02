@@ -435,7 +435,7 @@ INDUSTRY_BENCHMARKS = {
         'website': {
             'awareness': {'sessions': 500, 'users': 400},
             'engagement': {'pages_per_session': 2.5, 'avg_session_duration': 120},
-            'conversion': {'conversions': 10, 'conversion_rate': 2.0},
+            'conversion': {'form_submits': 10, 'form_submit_rate': 2.0},
             'retention': {'returning_users': 30, 'retention_rate': 20},
             'advocacy': {'referrals': 5, 'social_shares': 10}
         },
@@ -472,7 +472,7 @@ INDUSTRY_BENCHMARKS = {
         'website': {
             'awareness': {'sessions': 600, 'users': 450},
             'engagement': {'pages_per_session': 3.0, 'avg_session_duration': 150},
-            'conversion': {'conversions': 15, 'conversion_rate': 2.5},
+            'conversion': {'form_submits': 15, 'form_submit_rate': 2.5},
             'retention': {'returning_users': 35, 'retention_rate': 25},
             'advocacy': {'referrals': 8, 'social_shares': 12}
         },
@@ -509,7 +509,7 @@ INDUSTRY_BENCHMARKS = {
         'website': {
             'awareness': {'sessions': 550, 'users': 420},
             'engagement': {'pages_per_session': 2.8, 'avg_session_duration': 140},
-            'conversion': {'conversions': 12, 'conversion_rate': 2.2},
+            'conversion': {'form_submits': 12, 'form_submit_rate': 2.2},
             'retention': {'returning_users': 32, 'retention_rate': 22},
             'advocacy': {'referrals': 6, 'social_shares': 8}
         },
@@ -546,7 +546,7 @@ INDUSTRY_BENCHMARKS = {
         'website': {
             'awareness': {'sessions': 500, 'users': 400},
             'engagement': {'pages_per_session': 2.5, 'avg_session_duration': 120},
-            'conversion': {'conversions': 10, 'conversion_rate': 2.0},
+            'conversion': {'form_submits': 10, 'form_submit_rate': 2.0},
             'retention': {'returning_users': 30, 'retention_rate': 20},
             'advocacy': {'referrals': 5, 'social_shares': 10}
         },

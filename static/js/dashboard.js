@@ -375,6 +375,9 @@ async function openEditCustomerModal() {
 
         // Populate website credentials
         const websiteCreds = credentials.website || {};
+        if (websiteCreds.website_url) {
+            document.getElementById('websiteUrl').value = websiteCreds.website_url;
+        }
         if (websiteCreds.ga4_property_id) {
             document.getElementById('ga4PropertyId').value = websiteCreds.ga4_property_id;
         }
@@ -422,6 +425,11 @@ async function handleEditCustomer() {
     const klaviyoKey = document.getElementById('klaviyoApiKey').value;
     if (klaviyoKey) {
         customerData.credentials.email.klaviyo_api_key = klaviyoKey;
+    }
+
+    const websiteUrlEdit = document.getElementById('websiteUrl').value;
+    if (websiteUrlEdit) {
+        customerData.credentials.website.website_url = websiteUrlEdit;
     }
 
     const ga4PropertyId = document.getElementById('ga4PropertyId').value;
@@ -504,14 +512,19 @@ async function handleAddCustomer(e) {
         customerData.credentials.email.klaviyo_api_key = klaviyoKey;
     }
     
+    const websiteUrl = document.getElementById('websiteUrl').value;
+    if (websiteUrl) {
+        customerData.credentials.website.website_url = websiteUrl;
+    }
+
     const ga4PropertyId = document.getElementById('ga4PropertyId').value;
     if (ga4PropertyId) {
         customerData.credentials.website.ga4_property_id = ga4PropertyId;
     }
-    
+
     try {
         showLoading(true);
-        
+
         const response = await fetch('/api/customers', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

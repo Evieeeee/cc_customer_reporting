@@ -279,10 +279,17 @@
                     
                     <div class="form-section">
                         <h3>Website Analytics</h3>
-                        
+
                         <div class="form-group">
-                            <label for="ga4PropertyId">Google Analytics 4 Property ID</label>
-                            <input type="text" id="ga4PropertyId" 
+                            <label for="websiteUrl">Website URL</label>
+                            <input type="url" id="websiteUrl"
+                                   placeholder="e.g., https://www.yourdentist.com">
+                            <small class="help-text">Used to estimate metrics with AI when Google Analytics is not connected.</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="ga4PropertyId">Google Analytics 4 Property ID <span style="font-weight:400; color:#757575;">(optional – overrides AI estimates)</span></label>
+                            <input type="text" id="ga4PropertyId"
                                    placeholder="e.g., 123456789">
                         </div>
                         
